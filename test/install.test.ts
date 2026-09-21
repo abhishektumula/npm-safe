@@ -57,6 +57,14 @@ describe("performInstall guards", () => {
       /nothing to install/,
     );
   });
+  test("non-registry specs throw before any engine work", async () => {
+    await expect(performInstall("npm", req({ packages: ["file:./local"] }))).rejects.toThrow(
+      /non-registry spec/,
+    );
+    await expect(
+      performInstall("yarn", req({ packages: ["https://example.com/x.tgz"] })),
+    ).rejects.toThrow(/non-registry spec/);
+  });
 });
 
 describe("binary boundary (dry-run only, no spawn)", () => {  test("bun dry-run prints the would-be command", async () => {
@@ -127,7 +135,7 @@ describe("yarn engine dry-runs (no network: ranged specs only)", () => {
     const dir = yarnDir(true);
     try {
       await expect(performInstall("yarn", req({ cwd: dir, packages: ["@"] }))).rejects.toThrow(
-        /invalid package spec/,
+        /non-registry spec/,
       );
     } finally {
       rmSync(dir, { recursive: true, force: true });

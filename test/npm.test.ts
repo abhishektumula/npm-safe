@@ -66,4 +66,14 @@ describe("fetchNpmMeta", () => {
     stubFetch({}, 500);
     await expect(fetchNpmMeta("x")).rejects.toThrow("responded 500");
   });
+  test("non-registry names throw before any fetch", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      return { status: 200, ok: true, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    await expect(fetchNpmMeta("file:./local")).rejects.toThrow(/invalid package name/);
+    await expect(fetchNpmMeta("../escape")).rejects.toThrow(/invalid package name/);
+    expect(calls).toBe(0);
+  });
 });

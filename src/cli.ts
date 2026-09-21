@@ -4,7 +4,8 @@ import { confirm } from "./prompt.ts";
 import { detectPm, PmError } from "./pm.ts";
 import { engineFor, performInstall, performPassthrough, InstallError } from "./install.ts";
 import { render } from "./render.ts";
-import type { CliOptions } from "./types.ts";
+import { sanitizeTerminal } from "./sanitize.ts";
+import type { CliOptions, PackageReport } from "./types.ts";
 
 const VERSION = "0.1.0";
 
@@ -200,6 +201,25 @@ export function helpText(): string {
 `;
 }
 
+/** Scores below this print a pre-prompt warning. Advisory only: npms informs, never blocks. */
+export const LOW_HEALTH_THRESHOLD = 40;
+
+/** Warn about low or unavailable health before the install prompt. */
+export function warnOnLowHealth(reports: PackageReport[]): void {
+  const low = reports.filter((r) => r.health.score !== null && r.health.score < LOW_HEALTH_THRESHOLD);
+  const unknown = reports.filter((r) => r.health.score === null);
+  if (low.length > 0) {
+    const names = low
+      .map((r) => `${sanitizeTerminal(r.meta?.name ?? r.query)} (${r.health.score}/100)`)
+      .join(", ");
+    console.log(paint(c.red, `  ⚠ low health score: ${names} — review before installing`));
+  }
+  if (unknown.length > 0) {
+    const names = unknown.map((r) => sanitizeTerminal(r.meta?.name ?? r.query)).join(", ");
+    console.log(paint(c.dim, `  ⚠ health unavailable (snyk unreachable): ${names}`));
+  }
+}
+
 export async function run(argv: string[]): Promise<void> {
   const { cmd, subcommand, passthroughArgs, opts, help, version } = parseArgs(argv);
   if (version) {
@@ -260,6 +280,7 @@ export async function run(argv: string[]): Promise<void> {
     process.exitCode = 1;
     return;
   }
+  warnOnLowHealth(reports.filter((r) => r.meta !== null));
   const installable = reports.filter((r) => r.meta).map((r) => r.query);
   const req = {
     cwd: process.cwd(),

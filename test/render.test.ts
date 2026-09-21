@@ -30,6 +30,7 @@ function report(overrides: Partial<PackageReport> = {}): PackageReport {
     transitiveCount: 3,
     totalCount: 5,
     transitiveNames: ["a", "b", "c"],
+    truncated: false,
     elapsedMs: 42,
     ...overrides,
   };
@@ -72,6 +73,10 @@ describe("render full card", () => {
     expect(raw).not.toContain("‑repo");
     expect(stripAnsi(raw)).toContain("https://example.com/repo");
     expect(stripAnsi(raw)).toContain("innocentfake prompt");
+  });
+  test("truncated crawls are marked partial", () => {
+    const text = stripAnsi(render([{ ...report(), truncated: true }], false));
+    expect(text).toContain("partial");
   });
   test("unrecognized badge text renders dim", () => {
     const r = report();

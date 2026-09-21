@@ -129,20 +129,27 @@ describe("run", () => {
     expect(output()).toContain("unsupported package manager");
     expect(process.exitCode).toBe(1);
   });
-  test("engine failure in dry-run exits 1", async () => {
+  test("non-registry spec fails at intel with a clear error", async () => {
+    stubRegistry();
+    await run(["add", "file:./local", "--dry-run", "--pm", "bun"]);
+    expect(output()).toContain("invalid package name");
+    expect(output()).toContain("nothing to install");
+    expect(process.exitCode).toBe(1);
+  });
+  test("low health prints a pre-prompt warning", async () => {
     globalThis.fetch = (async (url: string | URL | Request) => {
       const u = String(url);
       if (u.includes("security.snyk.io")) {
-        return { status: 200, ok: true, text: async () => HEALTH_HTML };
+        return { status: 200, ok: true, text: async () => `<span class="score-number">20/100</span>` };
       }
       return {
         status: 200,
         ok: true,
         json: async () => ({
-          name: "@",
+          name: "pkgr1",
           version: "1.0.0",
-          description: "odd",
-          author: "t",
+          description: "risky package",
+          author: "tester",
           license: "MIT",
           repository: "https://github.com/test/test",
           dependencies: {},
@@ -150,9 +157,29 @@ describe("run", () => {
         }),
       };
     }) as unknown as typeof fetch;
-    await run(["add", "@", "--dry-run", "--pm", "yarn"]);
-    expect(output()).toContain("invalid package spec");
-    expect(process.exitCode).toBe(1);
+    await run(["add", "pkgr1", "--dry-run", "--pm", "bun"]);
+    expect(output()).toContain("low health score");
+    expect(process.exitCode).toBe(0);
+  });
+  test("unreachable health prints an unavailable note", async () => {
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes("security.snyk.io")) {
+        return { status: 503, ok: false, text: async () => "" };
+      }
+      return {
+        status: 200,
+        ok: true,
+        json: async () => ({
+          name: "pkgr1",
+          version: "1.0.0",
+          dependencies: {},
+        }),
+      };
+    }) as unknown as typeof fetch;
+    await run(["add", "pkgr1", "--dry-run", "--pm", "bun"]);
+    expect(output()).toContain("health unavailable");
+    expect(process.exitCode).toBe(0);
   });
   test("all lookups failing exits 1", async () => {
     stubRegistry([]);

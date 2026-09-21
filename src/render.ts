@@ -52,7 +52,8 @@ function fullCard(r: PackageReport, showAll: boolean): string {
   L.push(
     `  ${paint(c.violet, "deps   ")} ${paint(c.lime, String(r.directCount))}${paint(c.dim, " direct")}  ` +
       `${paint(c.lime, String(r.transitiveCount))}${paint(c.dim, " transitive")}  ` +
-      `${paint(c.white, String(r.totalCount))}${paint(c.dim, " total")}`,
+      `${paint(c.white, String(r.totalCount))}${paint(c.dim, " total")}` +
+      `${r.truncated ? paint(c.dim, "  (partial: crawl hit its budget)") : ""}`,
   );
   L.push(`  ${paint(c.violet, "health ")} ${scoreText(r.health.score)}`);
   if (r.health.breakdown) {

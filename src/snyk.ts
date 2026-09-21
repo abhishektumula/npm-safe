@@ -1,5 +1,6 @@
 import type { Health } from "./types.ts";
-import { encodePkg } from "./spec.ts";
+import { fetchWithRetry } from "./fetch.ts";
+import { encodePkg, isValidPkgName } from "./spec.ts";
 
 /** Scraped HTML is only scanned for small markers: never buffer more. */
 export const MAX_HTML_BYTES = 1_000_000;
@@ -10,15 +11,19 @@ export const MAX_HTML_BYTES = 1_000_000;
 //   <span class="criterion-label">security</span> ... <!--[-->No known security issues<!--]-->
 export async function fetchHealth(name: string): Promise<Health> {
   const empty: Health = { score: null, breakdown: null };
+  if (!isValidPkgName(name)) return empty;
   let html: string;
   try {
-    const res = await fetch(`https://security.snyk.io/package/npm/${encodePkg(name)}`, {
-      headers: {
-        "User-Agent": "npms/0.1.0",
-        Accept: "text/html",
+    const res = await fetchWithRetry(
+      `https://security.snyk.io/package/npm/${encodePkg(name)}`,
+      {
+        headers: {
+          "User-Agent": "npms/0.1.0",
+          Accept: "text/html",
+        },
       },
-      signal: AbortSignal.timeout(10000),
-    });
+      { timeoutMs: 10000 },
+    );
     if (!res.ok) return empty;
     // Unbounded pages (proxy errors, markup changes) would blow up memory
     // and the regexes below: bail out early on a large declared size…

@@ -36,6 +36,7 @@ what rules are load-bearing, and exactly when to commit.
 | `src/install.ts`   | **Only file allowed to install/run packages.** Per-PM engines behind `performInstall` / `performPassthrough` | Any install or spawn behavior |
 | `src/pm.ts`        | Detecting which manager owns `cwd` (lockfiles → `packageManager` field → npm default) | Detection rules only |
 | `src/npm.ts`       | Registry metadata (`registry.npmjs.org/:pkg/latest`) | Intel fields, registry handling |
+| `src/fetch.ts`     | Shared `fetchWithRetry()` (per-attempt timeout, 429/503 backoff) | Intel transport, retry policy |
 | `src/snyk.ts`      | Snyk health scrape                                  | Health source/parsing changes                      |
 | `src/deps.ts`      | Transitive-dep BFS (`CONCURRENCY`, `MAX_NODES`)     | Counting strategy, limits                          |
 | `src/spec.ts`      | Spec parsing (`splitSpec`) + scope-safe encoding (`encodePkg`) | Package-spec syntax |

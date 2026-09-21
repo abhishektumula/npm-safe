@@ -17,6 +17,7 @@
 import { spawnSync } from "node:child_process";
 import { fetchNpmMeta } from "./npm.ts";
 import { ALL_PMS } from "./pm.ts";
+import { isValidPkgName, splitSpec } from "./spec.ts";
 import type { InstallRequest, InstallResult } from "./types.ts";
 
 export class InstallError extends Error {
@@ -39,6 +40,23 @@ export function splitExactFlag(extraArgs: string[]): { exact: boolean; ignored: 
     exact: extraArgs.includes("--save-exact") || extraArgs.includes("-E"),
     ignored: extraArgs.filter((a) => a !== "--save-exact" && a !== "-E"),
   };
+}
+
+/**
+ * Reject anything that is not an `<npm-name>[@<range>]` spec before an
+ * engine sees it: protocols (`file:`, `git+ssh:`, `https:`), paths, and
+ * malformed names. The CLI only forwards intel-approved packages, but
+ * performInstall is also a public entry point.
+ */
+function assertRegistrySpecs(packages: string[]): void {
+  for (const spec of packages) {
+    const { name } = splitSpec(spec);
+    if (!isValidPkgName(name)) {
+      throw new InstallError(
+        `refusing non-registry spec "${spec}": only npm package names with optional versions can be installed`,
+      );
+    }
+  }
 }
 
 /** Human-readable engine label for status lines. */
@@ -88,6 +106,10 @@ async function installWithNpm(req: InstallRequest): Promise<InstallResult> {
     throw new InstallError("npm engine unavailable: @npmcli/arborist is not installed");
   }
   if (req.packages.length === 0) throw new InstallError("nothing to install");
+  // The intel screen only ever approves registry packages; enforce the
+  // same allowlist here so non-registry specs (file:, git+, URLs) can
+  // never reach the engine through a direct performInstall call.
+  assertRegistrySpecs(req.packages);
 
   const { exact, ignored } = splitExactFlag(req.extraArgs);
   const saveType = req.dev ? "dev" : "prod";
@@ -130,6 +152,7 @@ async function installWithYarn(req: InstallRequest): Promise<InstallResult> {
   const { Configuration, Project, StreamReport, structUtils, Cache } = core;
   const { npath } = await import("@yarnpkg/fslib");
   if (req.packages.length === 0) throw new InstallError("nothing to install");
+  assertRegistrySpecs(req.packages);
 
   const cwd = npath.toPortablePath(req.cwd);
   const configuration = await Configuration.find(cwd, null);

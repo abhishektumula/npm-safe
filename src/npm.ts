@@ -1,5 +1,6 @@
 import type { NpmMeta } from "./types.ts";
-import { encodePkg } from "./spec.ts";
+import { fetchWithRetry } from "./fetch.ts";
+import { encodePkg, isValidPkgName } from "./spec.ts";
 
 const REGISTRY = "https://registry.npmjs.org";
 
@@ -25,10 +26,14 @@ function cleanAuthor(raw: unknown): string {
 // Fast path: /:pkg/latest is a few KB vs multi-MB full packument.
 // Same data that powers npmjs.com/package/:pkg, minus the HTML weight.
 export async function fetchNpmMeta(name: string): Promise<NpmMeta> {
-  const res = await fetch(`${REGISTRY}/${encodePkg(name)}/latest`, {
-    headers: { Accept: "application/json" },
-    signal: AbortSignal.timeout(8000),
-  });
+  if (!isValidPkgName(name)) {
+    throw new Error(`invalid package name "${name}": registry names only (no protocols or paths)`);
+  }
+  const res = await fetchWithRetry(
+    `${REGISTRY}/${encodePkg(name)}/latest`,
+    { headers: { Accept: "application/json" } },
+    { timeoutMs: 8000 },
+  );
   if (res.status === 404) throw new Error(`package "${name}" not found on npm`);
   if (!res.ok) throw new Error(`registry responded ${res.status}`);
   const j = (await res.json()) as Record<string, any>;

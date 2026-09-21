@@ -38,12 +38,24 @@ describe("countTransitive", () => {
   });
   test("empty direct list counts nothing", async () => {
     stubGraph({});
-    expect(await countTransitive([])).toEqual({ count: 0, names: [] });
+    expect(await countTransitive([])).toEqual({ count: 0, names: [], truncated: false });
   });
   test("unresolvable deps count as leaves", async () => {
     globalThis.fetch = (async () => ({ status: 404, ok: false })) as unknown as typeof fetch;
     const { count, names } = await countTransitive(["ghost-pkg-zzz"]);
     expect(count).toBe(0);
     expect(names).toEqual([]);
+  });
+  test("slow crawls truncate instead of hanging", async () => {
+    globalThis.fetch = (async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return {
+        status: 200,
+        ok: true,
+        json: async () => ({ name: "slow1", version: "1.0.0", dependencies: { slow2: "^1" } }),
+      };
+    }) as unknown as typeof fetch;
+    const res = await countTransitive(["slow1"], { maxMs: 5 });
+    expect(res.truncated).toBe(true);
   });
 });

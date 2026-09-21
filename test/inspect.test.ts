@@ -46,6 +46,7 @@ describe("inspectOne", () => {
     expect(r.transitiveNames).toEqual(["granda"]);
     expect(r.health.score).toBe(90);
     expect(r.metaError).toBeNull();
+    expect(r.truncated).toBe(false);
   });
   test("versioned query looks up the bare name", async () => {
     stubIntel({ pkgb: [] });
@@ -60,6 +61,17 @@ describe("inspectOne", () => {
     expect(r.metaError).toMatch(/not found/);
     expect(r.totalCount).toBe(0);
     expect(r.health.score).toBe(90);
+  });
+  test("non-registry query fails fast without any fetch", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      return { status: 200, ok: true, json: async () => ({}), text: async () => "" };
+    }) as unknown as typeof fetch;
+    const r = await inspectOne("file:./local");
+    expect(r.meta).toBeNull();
+    expect(r.metaError).toMatch(/invalid package name/);
+    expect(calls).toBe(0);
   });
   test("registry throw becomes a meta error, not a crash", async () => {
     globalThis.fetch = (async (url: string | URL | Request) => {

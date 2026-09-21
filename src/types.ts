@@ -30,6 +30,8 @@ export interface PackageReport {
   transitiveCount: number;
   totalCount: number;
   transitiveNames: string[];
+  /** true when the transitive crawl hit its node or time budget */
+  truncated: boolean;
   elapsedMs: number;
 }
 
