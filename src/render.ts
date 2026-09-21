@@ -35,6 +35,10 @@ export function render(reports: PackageReport[], showAll: boolean): string {
 
 function fullCard(r: PackageReport, showAll: boolean): string {
   const L: string[] = [];
+  if (r.isNonRegistry) {
+    L.push(paint(c.yellow, `  ⚠ ${r.query}`) + paint(c.dim, "  — non-registry spec (intel skipped)"));
+    return L.join("\n");
+  }
   if (!r.meta) {
     L.push(paint(c.red, `  ✖ ${r.query}`) + paint(c.dim, `  — ${r.metaError ?? "fetch failed"}`));
     return L.join("\n");
@@ -78,6 +82,9 @@ function fullCard(r: PackageReport, showAll: boolean): string {
 }
 
 function compactRow(r: PackageReport): string {
+  if (r.isNonRegistry) {
+    return paint(c.yellow, `  ⚠ ${r.query}`) + paint(c.dim, "  — non-registry spec (intel skipped)");
+  }
   if (!r.meta) return paint(c.red, `  ✖ ${r.query}`) + paint(c.dim, ` — ${r.metaError ?? "fetch failed"}`);
   const depBits = `${r.totalCount}(${r.directCount}d, ${r.transitiveCount}t)`;
   const score = r.health.score === null ? paint(c.dim, "n/a") : paint(healthColor(r.health.score), `${r.health.score}/100`);

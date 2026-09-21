@@ -51,18 +51,23 @@ describe("performInstall guards", () => {
   test("unknown manager throws", async () => {
     await expect(performInstall("wat", req())).rejects.toThrow(InstallError);
   });
-  test("empty packages throw before any engine loads", async () => {
-    await expect(performInstall("npm", req({ packages: [] }))).rejects.toThrow(/nothing to install/);
-    await expect(performInstall("yarn", req({ packages: [] }))).rejects.toThrow(
-      /nothing to install/,
-    );
+  test("empty packages does project install (dry-run)", async () => {
+    const res = await performInstall("npm", req({ packages: [], dryRun: true }));
+    expect(res.ok).toBe(true);
+    expect(res.message).toContain("project dependencies");
   });
 });
 
-describe("binary boundary (dry-run only, no spawn)", () => {  test("bun dry-run prints the would-be command", async () => {
+describe("binary boundary (dry-run only, no spawn)", () => {
+  test("bun dry-run prints the would-be command", async () => {
     const res = await performInstall("bun", req());
     expect(res.ok).toBe(true);
     expect(res.message).toContain("bun add left-pad");
+  });
+  test("yarn delegates non-registry specs to the yarn binary", async () => {
+    const res = await performInstall("yarn", req({ packages: ["user/repo"] }));
+    expect(res.ok).toBe(true);
+    expect(res.message).toContain("yarn add user/repo");
   });
   test("dev + extras shape the command", async () => {
     const res = await performInstall("pnpm", req({ dev: true, extraArgs: ["--foo"] }));

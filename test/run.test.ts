@@ -70,9 +70,10 @@ describe("run", () => {
     expect(output()).toContain("0.1.0");
     expect(process.exitCode).toBe(0);
   });
-  test("no packages prints help", async () => {
-    await run([]);
-    expect(output()).toContain("usage");
+  test("no packages does project install (dry-run)", async () => {
+    await run(["--dry-run"]);
+    expect(output()).toContain("would run `bun install`");
+    expect(process.exitCode).toBe(0);
   });
   test("passthrough dry-run never spawns", async () => {
     await run(["run", "--dry-run", "build"]);
@@ -153,5 +154,47 @@ describe("run", () => {
     await run(["add", "missing1", "--dry-run", "--pm", "bun"]);
     expect(output()).toContain("nothing to install");
     expect(process.exitCode).toBe(1);
+  });
+  test("-g flag with npm errors (in-process engine)", async () => {
+    await run(["add", "pkgr1", "-g", "--dry-run", "--pm", "npm"]);
+    expect(output()).toContain("not supported with npm");
+    expect(process.exitCode).toBe(1);
+  });
+  test("-g flag with yarn errors (in-process engine)", async () => {
+    await run(["add", "pkgr1", "--global", "--dry-run", "--pm", "yarn"]);
+    expect(output()).toContain("not supported with yarn");
+    expect(process.exitCode).toBe(1);
+  });
+  test("-g flag on passthrough is forwarded, not blocked", async () => {
+    await run(["run", "-g", "--dry-run", "build"]);
+    expect(output()).toContain("dry-run");
+    expect(process.exitCode).toBe(0);
+  });
+  test("-g flag with bun works (binary engine)", async () => {
+    stubRegistry(["pkgr1"]);
+    await run(["add", "pkgr1", "-g", "--dry-run", "--pm", "bun"]);
+    expect(output()).toContain("bun add");
+    expect(output()).toContain("-g");
+    expect(process.exitCode).toBe(0);
+  });
+  test("non-registry spec (GitHub shorthand) installs with warning", async () => {
+    await run(["add", "user/repo", "--dry-run", "--pm", "bun", "-y"]);
+    expect(output()).toContain("non-registry spec");
+    expect(output()).toContain("user/repo");
+    expect(process.exitCode).toBe(0);
+  });
+  test("non-registry spec (file:) installs with warning", async () => {
+    await run(["add", "file:../local", "--dry-run", "--pm", "bun", "-y"]);
+    expect(output()).toContain("non-registry spec");
+    expect(output()).toContain("file:../local");
+    expect(process.exitCode).toBe(0);
+  });
+  test("mix of registry and non-registry specs", async () => {
+    stubRegistry(["pkgr1"]);
+    await run(["add", "pkgr1", "user/repo", "--dry-run", "--pm", "bun", "-y"]);
+    expect(output()).toContain("pkgr1");
+    expect(output()).toContain("non-registry spec");
+    expect(output()).toContain("user/repo");
+    expect(process.exitCode).toBe(0);
   });
 });

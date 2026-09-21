@@ -4,11 +4,28 @@
 import { fetchNpmMeta } from "./npm.ts";
 import { fetchHealth } from "./snyk.ts";
 import { countTransitive } from "./deps.ts";
-import { splitSpec } from "./spec.ts";
+import { splitSpec, isRegistrySpec } from "./spec.ts";
 import type { PackageReport } from "./types.ts";
 
 export async function inspectOne(query: string): Promise<PackageReport> {
   const t0 = Date.now();
+
+  // Non-registry specs (GitHub shorthand, file:, link:, tarball URLs) skip intel
+  if (!isRegistrySpec(query)) {
+    return {
+      query,
+      meta: null,
+      metaError: "non-registry spec (intel skipped)",
+      health: { score: null, breakdown: null },
+      directCount: 0,
+      transitiveCount: 0,
+      totalCount: 0,
+      transitiveNames: [],
+      elapsedMs: Date.now() - t0,
+      isNonRegistry: true,
+    };
+  }
+
   const { name } = splitSpec(query);
   const lookup = name || query;
   const [metaRes, health] = await Promise.allSettled([fetchNpmMeta(lookup), fetchHealth(lookup)]);

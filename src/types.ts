@@ -31,6 +31,8 @@ export interface PackageReport {
   totalCount: number;
   transitiveNames: string[];
   elapsedMs: number;
+  /** True for non-registry specs (GitHub shorthand, file:, link:, tarball URLs) */
+  isNonRegistry?: boolean;
 }
 
 export interface CliOptions {

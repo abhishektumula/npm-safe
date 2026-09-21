@@ -5,7 +5,10 @@
 //   yarn -> @yarnpkg/core (berry's documented Node API: "first and
 //           foremost a Node API that can be used programmatically") +
 //           plugin-npm for registry resolution + the linker plugin
-//           matching the project's nodeLinker (pnp | node-modules)
+//           matching the project's nodeLinker (pnp | node-modules).
+//           Bare non-registry specs (user/repo, file:, link:, tarballs)
+//           aren't valid yarn descriptors, so those fall back to the
+//           yarn binary, which resolves them natively.
 //   pnpm / bun / brew -> spawned binary. Neither pnpm (a native binary
 //           since v12, no public install API) nor bun (single binary,
 //           CLI-only surface) ships a programmatic install API, so the
@@ -16,6 +19,7 @@
 
 import { spawnSync } from "node:child_process";
 import { fetchNpmMeta } from "./npm.ts";
+import { isRegistrySpec } from "./spec.ts";
 import { ALL_PMS } from "./pm.ts";
 import type { InstallRequest, InstallResult } from "./types.ts";
 
@@ -60,6 +64,10 @@ export function engineFor(pm: string): string {
 }
 
 export async function performInstall(pm: string, req: InstallRequest): Promise<InstallResult> {
+  // If no packages specified, do a project install (install from package.json)
+  if (req.packages.length === 0) {
+    return performProjectInstall(pm, req);
+  }
   switch (pm) {
     case "npm":
       return installWithNpm(req);
@@ -72,6 +80,140 @@ export async function performInstall(pm: string, req: InstallRequest): Promise<I
     default:
       throw new InstallError(`unsupported package manager: ${pm}`);
   }
+}
+
+// --- project install: install from package.json (no new packages) -------------
+
+async function performProjectInstall(pm: string, req: InstallRequest): Promise<InstallResult> {
+  switch (pm) {
+    case "npm":
+      return projectInstallWithNpm(req);
+    case "yarn":
+      return projectInstallWithYarn(req);
+    case "pnpm":
+    case "bun":
+    case "brew":
+      return projectInstallWithBinary(pm, req);
+    default:
+      throw new InstallError(`unsupported package manager: ${pm}`);
+  }
+}
+
+// --- npm: project install via arborist reify ---------------------------------
+
+async function projectInstallWithNpm(req: InstallRequest): Promise<InstallResult> {
+  let Arborist: new (opts?: Record<string, unknown>) => {
+    idealTree?: { inventory: Map<string, unknown> };
+    buildIdealTree(opts?: Record<string, unknown>): Promise<unknown>;
+    reify(opts?: Record<string, unknown>): Promise<unknown>;
+  };
+  try {
+    ({ default: Arborist } = await import("@npmcli/arborist"));
+  } catch {
+    throw new InstallError("npm engine unavailable: @npmcli/arborist is not installed");
+  }
+
+  const { exact, ignored } = splitExactFlag(req.extraArgs);
+  const saveType = req.dev ? "dev" : "prod";
+
+  const arb = new Arborist({ path: req.cwd, save: true, saveType, savePrefix: exact ? "" : "^" });
+  try {
+    await arb.buildIdealTree({});
+  } catch (err) {
+    throw new InstallError(`npm resolve failed: ${errMsg(err)}`);
+  }
+
+  const resolved = arb.idealTree?.inventory.size;
+  if (req.dryRun) {
+    return {
+      ok: true,
+      message: `dry-run: resolved project dependencies${typeof resolved === "number" ? ` (${resolved} nodes in ideal tree)` : ""} — nothing written`,
+    };
+  }
+  try {
+    await arb.reify({ save: true });
+  } catch (err) {
+    throw new InstallError(`npm install failed: ${errMsg(err)}`);
+  }
+  return {
+    ok: true,
+    message: `installed project dependencies via @npmcli/arborist${ignored.length ? ` (ignored non-API flags: ${ignored.join(" ")})` : ""}`,
+  };
+}
+
+// --- yarn: project install ---------------------------------------------------
+
+async function projectInstallWithYarn(req: InstallRequest): Promise<InstallResult> {
+  let core: typeof import("@yarnpkg/core");
+  try {
+    core = await import("@yarnpkg/core");
+  } catch {
+    throw new InstallError("yarn engine unavailable: @yarnpkg/core is not installed");
+  }
+  const { Configuration, Project, StreamReport, Cache } = core;
+  const { npath } = await import("@yarnpkg/fslib");
+
+  const cwd = npath.toPortablePath(req.cwd);
+  const configuration = await Configuration.find(cwd, null);
+
+  const npmPlugin = (await import("@yarnpkg/plugin-npm")).default;
+  configuration.activatePlugin("@yarnpkg/plugin-npm", npmPlugin);
+  configuration.activatePlugin("@yarnpkg/plugin-nm", (await import("@yarnpkg/plugin-nm")).default);
+  configuration.activatePlugin(
+    "@yarnpkg/plugin-pnp",
+    (await import("@yarnpkg/plugin-pnp")).default,
+  );
+  const linker = configuration.get("nodeLinker");
+
+  let findResult: Awaited<ReturnType<typeof Project.find>>;
+  try {
+    findResult = await Project.find(configuration, cwd);
+  } catch (err) {
+    throw new InstallError(`no yarn project found under ${req.cwd}: ${errMsg(err)}`);
+  }
+  const { workspace } = findResult;
+  if (!workspace) throw new InstallError(`no yarn workspace found under ${req.cwd}`);
+
+  if (req.dryRun) {
+    return {
+      ok: true,
+      message: `dry-run: would install project dependencies (linker: ${linker}) — nothing written`,
+    };
+  }
+
+  const report = await StreamReport.start(
+    { configuration, stdout: process.stdout },
+    async (report) => {
+      const { project } = await Project.find(configuration, cwd);
+      const cache = await Cache.find(configuration);
+      await project.install({ cache, report });
+    },
+  );
+  if (report.hasErrors()) throw new InstallError("yarn install reported errors (see above)");
+  return {
+    ok: true,
+    message: `installed project dependencies via @yarnpkg/core`,
+  };
+}
+
+// --- binary: project install -------------------------------------------------
+
+const BINARY_PROJECT_INSTALL_ARGS: Record<string, string[]> = {
+  bun: ["install"],
+  pnpm: ["install"],
+  brew: ["install"],
+};
+
+async function projectInstallWithBinary(pm: string, req: InstallRequest): Promise<InstallResult> {
+  const baseArgs = BINARY_PROJECT_INSTALL_ARGS[pm];
+  if (!baseArgs) throw new InstallError(`unsupported package manager: ${pm}`);
+  const args = [...baseArgs, ...req.extraArgs];
+  if (req.dryRun) {
+    return { ok: true, message: `dry-run: would run \`${pm} ${args.join(" ")}\` — nothing executed` };
+  }
+  const code = spawnPm(pm, args, req.cwd);
+  if (code !== 0) throw new InstallError(`${pm} exited with code ${code}`);
+  return { ok: true, message: `installed project dependencies via ${pm}` };
 }
 
 // --- npm: @npmcli/arborist -----------------------------------------------
@@ -121,6 +263,13 @@ async function installWithNpm(req: InstallRequest): Promise<InstallResult> {
 // --- yarn: @yarnpkg/core ---------------------------------------------------
 
 async function installWithYarn(req: InstallRequest): Promise<InstallResult> {
+  // Bare non-registry specs (user/repo, file:, link:, tarball URLs) are not
+  // valid yarn descriptors — the yarn CLI itself requires a `name@range`
+  // form for those. Delegate the whole command to the yarn binary, which
+  // resolves paths/URLs natively (relative paths via name extraction).
+  if (req.packages.some((p) => !isRegistrySpec(p))) {
+    return installWithBinary("yarn", req);
+  }
   let core: typeof import("@yarnpkg/core");
   try {
     core = await import("@yarnpkg/core");
@@ -224,6 +373,8 @@ const BINARY_INSTALL_ARGS: Record<string, { normal: string[]; dev: string[] }> =
   bun: { normal: ["add"], dev: ["add", "--dev"] },
   pnpm: { normal: ["add"], dev: ["add", "--save-dev"] },
   brew: { normal: ["install"], dev: ["install"] },
+  // Fallback target for non-registry specs under --pm yarn (see installWithYarn).
+  yarn: { normal: ["add"], dev: ["add", "--dev"] },
 };
 
 async function installWithBinary(pm: string, req: InstallRequest): Promise<InstallResult> {

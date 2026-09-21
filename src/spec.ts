@@ -38,3 +38,38 @@ export function encodePkg(name: string): string {
     .map((seg) => encodeURIComponent(seg).replace(/^%40/, "@"))
     .join("/");
 }
+
+/** Check if a package spec is a local/file/tarball spec. */
+export function isLocalSpec(query: string): boolean {
+  const q = query.trim();
+  return /^(file:|link:|https?:)/i.test(q);
+}
+
+/** Check if a package spec is a GitHub shorthand (user/repo, user/repo#branch). */
+export function isGitHubShorthand(query: string): boolean {
+  const q = query.trim();
+  if (!q || q.startsWith("@")) return false;
+  if (isLocalSpec(q)) return false;
+  if (q.includes("/") && !q.includes("@")) {
+    const parts = q.split("/");
+    return parts.length === 2 && !!parts[0] && !!parts[1];
+  }
+  return false;
+}
+
+/**
+ * Check if a package spec can be looked up on the npm registry.
+ * Non-registry specs (GitHub shorthand, file:, link:, tarball URLs —
+ * including version-pinned forms like `pkg@file:../lib`) return false
+ * so callers can skip intel and install with a warning instead.
+ */
+export function isRegistrySpec(query: string): boolean {
+  const q = query.trim();
+  if (!q) return false;
+  if (isLocalSpec(q) || isGitHubShorthand(q)) return false;
+  // Version-pinned non-registry source: `pkg@file:…`, `pkg@https://…tgz`.
+  // (Scoped `@scope/pkg` with a plain version/range stays a registry spec.)
+  const { version } = splitSpec(q);
+  if (version && isLocalSpec(version)) return false;
+  return true;
+}

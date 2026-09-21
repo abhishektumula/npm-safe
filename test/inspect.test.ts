@@ -72,6 +72,31 @@ describe("inspectOne", () => {
     expect(r.meta).toBeNull();
     expect(r.metaError).toBe("net down");
   });
+  test("GitHub shorthand skips intel, marks as non-registry", async () => {
+    const r = await inspectOne("user/repo");
+    expect(r.meta).toBeNull();
+    expect(r.metaError).toBe("non-registry spec (intel skipped)");
+    expect(r.isNonRegistry).toBe(true);
+    expect(r.totalCount).toBe(0);
+  });
+  test("file: spec skips intel, marks as non-registry", async () => {
+    const r = await inspectOne("file:../local");
+    expect(r.meta).toBeNull();
+    expect(r.metaError).toBe("non-registry spec (intel skipped)");
+    expect(r.isNonRegistry).toBe(true);
+  });
+  test("link: spec skips intel, marks as non-registry", async () => {
+    const r = await inspectOne("link:./local");
+    expect(r.meta).toBeNull();
+    expect(r.metaError).toBe("non-registry spec (intel skipped)");
+    expect(r.isNonRegistry).toBe(true);
+  });
+  test("tarball URL skips intel, marks as non-registry", async () => {
+    const r = await inspectOne("https://example.com/pkg.tgz");
+    expect(r.meta).toBeNull();
+    expect(r.metaError).toBe("non-registry spec (intel skipped)");
+    expect(r.isNonRegistry).toBe(true);
+  });
 });
 
 describe("inspectPackages", () => {
@@ -79,5 +104,13 @@ describe("inspectPackages", () => {
     stubIntel({ z1: [], a1: [] });
     const rs = await inspectPackages(["z1", "a1"]);
     expect(rs.map((r) => r.query)).toEqual(["z1", "a1"]);
+  });
+  test("mixes registry and non-registry specs", async () => {
+    stubIntel({ pkga: [] });
+    const rs = await inspectPackages(["pkga", "user/repo", "file:../local"]);
+    expect(rs.length).toBe(3);
+    expect(rs[0]!.meta).not.toBeNull();
+    expect(rs[1]!.isNonRegistry).toBe(true);
+    expect(rs[2]!.isNonRegistry).toBe(true);
   });
 });

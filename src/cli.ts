@@ -173,9 +173,11 @@ export function helpText(): string {
 
   ${paint(c.cyan, "usage")}
     npms install <pkg...> [flags]     inspect, confirm, then install
+    npms install                       install project deps (no intel screen)
     npms i express lodash -a           inspect two packages, full detail
     npms add "express@5" --dry-run     inspect only, install nothing
     npms express lodash -y             bare packages also mean install
+    npms add user/repo file:../lib     non-registry specs skip intel + warn
     npms run dev / test / exec …       passthrough to your package manager
     npms uninstall foo                 passthrough, no intel screen
 
@@ -191,12 +193,17 @@ export function helpText(): string {
 
   ${paint(c.cyan, "notes")}
     3+ packages switch to a compact row: total(direct, transitive), no repo url.
+    Bare install (no packages) installs project deps like the manager does.
+    Non-registry specs (user/repo, file:, link:, tarball URLs) skip intel
+    with a warning and install straight through.
     Manager is auto-detected from local lockfiles (+ packageManager field),
     defaulting to npm. npm/yarn install in-process via their official
     engines (@npmcli/arborist, @yarnpkg/core); pnpm/bun/brew fall back
-    to their binaries (no programmatic API exists). Unknown flags are
-    forwarded to binary installers; the engines map --save-exact/-E
-    and report the rest as ignored.
+    to their binaries (no programmatic API exists). -g/--global is rejected
+    for the npm/yarn engines (local-project only) — use a binary manager
+    or run the global install directly. Unknown flags are forwarded to
+    binary installers; the engines map --save-exact/-E and report the
+    rest as ignored.
 `;
 }
 
@@ -229,7 +236,63 @@ export async function run(argv: string[]): Promise<void> {
     return;
   }
 
-  if (help || opts.packages.length === 0) {
+  // -g/--global installs can't run through the in-process engines
+  // (Arborist / @yarnpkg/core are local-project only — a silent local
+  // install would be worse than an error). Binary managers forward it.
+  // Passthrough above is unaffected: it already spawns the real binary.
+  const hasGlobalFlag = opts.extraArgs.some((a) => a === "-g" || a === "--global");
+  const usesInProcessEngine = pm === "npm" || pm === "yarn";
+  if (hasGlobalFlag && usesInProcessEngine) {
+    console.error(paint(c.red, `  ✖ -g/--global not supported with ${pm} (in-process engine).`));
+    console.error(
+      paint(
+        c.dim,
+        `  Use a binary installer instead: --pm pnpm|bun|brew, or run \`${pm} install -g\` directly.`,
+      ),
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  // Bare npms install (no packages) -> project install (like npm install)
+  if (opts.packages.length === 0) {
+    if (help) {
+      console.log(helpText());
+      return;
+    }
+    console.log(paint(c.dim, `  ◈ installer: ${pm} via ${engineFor(pm)} (detected: ${via})${opts.dev ? " --dev" : ""}`));
+    const req = {
+      cwd: process.cwd(),
+      packages: [],
+      dev: opts.dev,
+      extraArgs: opts.extraArgs,
+      dryRun: opts.dryRun,
+    };
+    if (opts.dryRun) {
+      const res = await performInstall(pm, req).catch((err) => ({
+        ok: false as const,
+        message: String(err instanceof InstallError ? err.message : err),
+      }));
+      console.log(paint(c.dim, `  ◌ ${res.message}`));
+      if (!res.ok) process.exitCode = 1;
+      return;
+    }
+    if (!opts.yes && !(await confirm())) {
+      console.log(paint(c.dim, "  ◌ aborted. nothing installed."));
+      return;
+    }
+    console.log(paint(c.cyan, `\n  ▶ installing project dependencies via ${engineFor(pm)}\n`));
+    try {
+      const res = await performInstall(pm, req);
+      console.log(paint(c.green, `  ✔ ${res.message}`));
+    } catch (err) {
+      console.error(paint(c.red, `  ✖ ${err instanceof InstallError ? err.message : String(err)}`));
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  if (help) {
     console.log(helpText());
     return;
   }
@@ -247,12 +310,19 @@ export async function run(argv: string[]): Promise<void> {
     paint(c.dim, `  ◈ installer: ${pm} via ${engineFor(pm)} (detected: ${via})${opts.dev ? " --dev" : ""}`),
   );
 
-  if (reports.every((r) => r.meta === null)) {
+  const nonRegistry = reports.filter((r) => r.isNonRegistry);
+  if (nonRegistry.length > 0) {
+    const specs = nonRegistry.map((r) => r.query).join(", ");
+    console.log(paint(c.yellow, `  ⚠ non-registry specs (intel skipped): ${specs}`));
+  }
+
+  const registryFailed = reports.filter((r) => !r.isNonRegistry && r.meta === null);
+  if (registryFailed.length === reports.length && nonRegistry.length === 0) {
     console.error(paint(c.red, "  ✖ nothing to install — all lookups failed."));
     process.exitCode = 1;
     return;
   }
-  const installable = reports.filter((r) => r.meta).map((r) => r.query);
+  const installable = reports.filter((r) => r.meta || r.isNonRegistry).map((r) => r.query);
   const req = {
     cwd: process.cwd(),
     packages: installable,

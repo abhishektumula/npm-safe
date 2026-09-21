@@ -35,12 +35,20 @@ bun link             # exposes `npms` on your PATH
 
 ```bash
 npms install express lodash -a     # intel cards, full detail, then confirm
+npms install                       # no packages: install project deps
 npms i "express@5" --dry-run       # inspect only, install nothing
 npms express lodash -y             # bare packages also mean install
+npms add user/repo file:../lib    # non-registry specs skip intel + warn
 npms run dev / test / exec …       # passthrough to your package manager
 npms uninstall foo                 # passthrough, no intel screen
 npms add left-pad --json           # machine-readable report
 ```
+
+Non-registry specs (`user/repo`, `file:`, `link:`, tarball URLs) have no
+registry page to inspect, so npms skips the intel screen for them with a
+warning and installs straight through. `-g`/`--global` is rejected for the
+npm/yarn in-process engines (they are local-project only) — use
+`--pm pnpm|bun|brew` or run the global install directly.
 
 | Flag          | Effect                                                        |
 | ------------- | ------------------------------------------------------------- |
