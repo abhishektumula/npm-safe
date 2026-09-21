@@ -72,6 +72,18 @@ with `--pm`.
 `run`, `test`, `exec`, `remove`, … are CLI-only surface in every manager,
 so they always pass straight through.
 
+Only npm registry package names (with optional versions) can be
+installed — `file:`, `git+`, and URL specs are refused with a clear
+error. `--dev` is a no-op for `brew` (`brew install` has no dev
+concept). A low (<40) or unreachable Snyk health score prints a
+warning before the prompt; it never blocks the install.
+
+## Privacy
+
+Inspecting a package sends its name to `registry.npmjs.org`
+(metadata) and `security.snyk.io` (health score). Nothing else
+leaves your machine — no telemetry, no accounts, no tokens.
+
 ## Development
 
 | Task              | Command                          |

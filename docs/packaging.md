@@ -49,6 +49,14 @@ the published tarball needs no lockfile. Engine deps
 (`@npmcli/arborist`, `@yarnpkg/*`) install automatically as
 `dependencies`.
 
+## Continuous integration
+
+`.github/workflows/ci.yml` runs the contributor gates on every push
+and pull request: `bun run check`, `bun test --coverage`, and
+`bun audit`. Keep it green — it enforces exactly the gates in
+[AGENTS.md](../AGENTS.md) §6, so a green CI means the set is safe to
+commit and release.
+
 ## Local install (development only)
 
 `bun link` exposes the bins from your checkout — but they point at
