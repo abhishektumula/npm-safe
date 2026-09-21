@@ -18,6 +18,8 @@
 // Nothing outside this file spawns a package manager.
 
 import { spawnSync } from "node:child_process";
+import { readFileSync, readdirSync, type Dirent } from "node:fs";
+import { join } from "node:path";
 import { fetchNpmMeta } from "./npm.ts";
 import { isRegistrySpec } from "./spec.ts";
 import { ALL_PMS } from "./pm.ts";
@@ -104,6 +106,67 @@ export function binarySaveFlags(
   return flags;
 }
 
+function readJsonFile(path: string): Record<string, any> | null {
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as Record<string, any>;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Validate `-w/--workspace <name>` against the root package.json workspaces
+ * and return the matched workspace *package name* (npm matches by name or
+ * by directory, so both spellings work). Only single-level `*` globs are
+ * expanded; exotic patterns can't be validated locally, so the name is
+ * handed to Arborist untouched (it warns on unknown filters instead of
+ * silently installing nowhere).
+ */
+export function resolveNpmWorkspace(cwd: string, name: string): string {
+  const pkg = readJsonFile(join(cwd, "package.json"));
+  const raw = pkg?.workspaces;
+  const patterns: unknown[] = Array.isArray(raw) ? raw : Array.isArray(raw?.packages) ? raw.packages : [];
+  if (patterns.length === 0) {
+    throw new InstallError(`--workspace "${name}": no workspaces defined under ${cwd}`);
+  }
+  const found = new Map<string, string>(); // package name -> workspace dir
+  let expandable = false;
+  for (const pattern of patterns) {
+    if (typeof pattern !== "string" || pattern.startsWith("!")) continue;
+    const star = pattern.indexOf("*");
+    if (star === -1) {
+      const sub = readJsonFile(join(cwd, pattern, "package.json"));
+      if (sub && typeof sub.name === "string") {
+        found.set(sub.name, pattern);
+        expandable = true;
+      }
+      continue;
+    }
+    const prefix = pattern.slice(0, star);
+    const suffix = pattern.slice(star + 1);
+    if (suffix.includes("*") || !/^\/?$/.test(suffix)) continue;
+    expandable = true;
+    let entries: Dirent[] = [];
+    try {
+      entries = readdirSync(join(cwd, prefix), { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      const dir = `${prefix}${e.name}`;
+      const sub = readJsonFile(join(cwd, dir, "package.json"));
+      if (sub && typeof sub.name === "string") found.set(sub.name, dir);
+    }
+  }
+  for (const [wsName, dir] of found) {
+    if (name === wsName || name === dir) return wsName;
+  }
+  if (!expandable || found.size === 0) return name;
+  const available = [...found.keys()].sort().join(", ");
+  throw new InstallError(`--workspace "${name}": no such workspace (available: ${available})`);
+}
+
 /** Human-readable engine label for status lines. */
 export function engineFor(pm: string): string {
   switch (pm) {
@@ -174,8 +237,16 @@ async function projectInstallWithNpm(req: InstallRequest): Promise<InstallResult
 
   const { exact, ignored } = splitExactFlag(req.extraArgs);
   const saveType = req.dev ? "dev" : "prod";
+  const ws = req.workspace ? resolveNpmWorkspace(req.cwd, req.workspace) : null;
+  const wsSuffix = ws ? ` (workspace: ${ws})` : "";
 
-  const arb = new Arborist({ path: req.cwd, save: true, saveType, savePrefix: exact ? "" : "^" });
+  const arb = new Arborist({
+    path: req.cwd,
+    save: true,
+    saveType,
+    savePrefix: exact ? "" : "^",
+    workspaces: ws ? [ws] : [],
+  });
   try {
     await arb.buildIdealTree({});
   } catch (err) {
@@ -186,7 +257,7 @@ async function projectInstallWithNpm(req: InstallRequest): Promise<InstallResult
   if (req.dryRun) {
     return {
       ok: true,
-      message: `dry-run: resolved project dependencies${typeof resolved === "number" ? ` (${resolved} nodes in ideal tree)` : ""} — nothing written`,
+      message: `dry-run: resolved project dependencies${typeof resolved === "number" ? ` (${resolved} nodes in ideal tree)` : ""}${wsSuffix} — nothing written`,
     };
   }
   try {
@@ -196,7 +267,7 @@ async function projectInstallWithNpm(req: InstallRequest): Promise<InstallResult
   }
   return {
     ok: true,
-    message: `installed project dependencies via @npmcli/arborist${ignored.length ? ` (ignored non-API flags: ${ignored.join(" ")})` : ""}`,
+    message: `installed project dependencies via @npmcli/arborist${wsSuffix}${ignored.length ? ` (ignored non-API flags: ${ignored.join(" ")})` : ""}`,
   };
 }
 
@@ -232,6 +303,14 @@ async function projectInstallWithYarn(req: InstallRequest): Promise<InstallResul
   }
   const { workspace } = findResult;
   if (!workspace) throw new InstallError(`no yarn workspace found under ${req.cwd}`);
+  // Yarn has no workspace-filtered project install (`yarn install` always
+  // covers the whole project), so --workspace here would silently do the
+  // wrong thing — fail with the way out instead.
+  if (req.workspace) {
+    throw new InstallError(
+      `--workspace "${req.workspace}": yarn cannot filter a project install — omit it or run inside the workspace`,
+    );
+  }
 
   if (req.dryRun) {
     return {
@@ -266,13 +345,14 @@ const BINARY_PROJECT_INSTALL_ARGS: Record<string, string[]> = {
 async function projectInstallWithBinary(pm: string, req: InstallRequest): Promise<InstallResult> {
   const baseArgs = BINARY_PROJECT_INSTALL_ARGS[pm];
   if (!baseArgs) throw new InstallError(`unsupported package manager: ${pm}`);
-  const args = [...baseArgs, ...req.extraArgs];
+  const wsSuffix = req.workspace ? ` (workspace: ${req.workspace})` : "";
+  const args = [...baseArgs, ...binaryWorkspaceFlags(pm, req.workspace), ...req.extraArgs];
   if (req.dryRun) {
     return { ok: true, message: `dry-run: would run \`${pm} ${args.join(" ")}\` — nothing executed` };
   }
   const code = spawnPm(pm, args, req.cwd);
   if (code !== 0) throw new InstallError(`${pm} exited with code ${code}`);
-  return { ok: true, message: `installed project dependencies via ${pm}` };
+  return { ok: true, message: `installed project dependencies via ${pm}${wsSuffix}` };
 }
 
 // --- npm: @npmcli/arborist -----------------------------------------------
@@ -292,9 +372,19 @@ async function installWithNpm(req: InstallRequest): Promise<InstallResult> {
 
   const { exact, ignored } = splitExactFlag(req.extraArgs);
   const saveType = npmSaveTypeFor(req);
+  // Same flag, same target on every manager: --workspace selects the
+  // workspace node Arborist applies the add to (like `npm --workspace`).
+  const ws = req.workspace ? resolveNpmWorkspace(req.cwd, req.workspace) : null;
+  const wsSuffix = ws ? ` (workspace: ${ws})` : "";
 
   // savePrefix "" pins the exact version (npm's --save-exact); "^" is npm's default.
-  const arb = new Arborist({ path: req.cwd, save: true, saveType, savePrefix: exact ? "" : "^" });
+  const arb = new Arborist({
+    path: req.cwd,
+    save: true,
+    saveType,
+    savePrefix: exact ? "" : "^",
+    workspaces: ws ? [ws] : [],
+  });
   try {
     await arb.buildIdealTree({ add: req.packages, saveType });
   } catch (err) {
@@ -305,7 +395,7 @@ async function installWithNpm(req: InstallRequest): Promise<InstallResult> {
   if (req.dryRun) {
     return {
       ok: true,
-      message: `dry-run: resolved ${req.packages.join(", ")}${typeof resolved === "number" ? ` (${resolved} nodes in ideal tree)` : ""} — nothing written`,
+      message: `dry-run: resolved ${req.packages.join(", ")}${typeof resolved === "number" ? ` (${resolved} nodes in ideal tree)` : ""}${wsSuffix} — nothing written`,
     };
   }
   try {
@@ -315,11 +405,45 @@ async function installWithNpm(req: InstallRequest): Promise<InstallResult> {
   }
   return {
     ok: true,
-    message: `installed ${req.packages.join(", ")} via @npmcli/arborist${ignored.length ? ` (ignored non-API flags: ${ignored.join(" ")})` : ""}`,
+    message: `installed ${req.packages.join(", ")} via @npmcli/arborist${wsSuffix}${ignored.length ? ` (ignored non-API flags: ${ignored.join(" ")})` : ""}`,
   };
 }
 
 // --- yarn: @yarnpkg/core ---------------------------------------------------
+
+type YarnCore = typeof import("@yarnpkg/core");
+type YarnProject = Awaited<ReturnType<YarnCore["Project"]["find"]>>["project"];
+type YarnWorkspace = Awaited<ReturnType<YarnCore["Project"]["find"]>>["workspace"];
+
+/**
+ * Resolve `-w/--workspace <name>` to a project workspace, matching by
+ * package name or by path relative to the project root (npm accepts both
+ * spellings, so the wrapper does too). structUtils is passed in because
+ * @yarnpkg/core is lazily imported by the engine, never at module load.
+ */
+export function selectYarnWorkspace(
+  project: YarnProject,
+  name: string,
+  structUtils: YarnCore["structUtils"],
+): NonNullable<YarnWorkspace> {
+  const byName = project.workspaces.find(
+    (w) => w.manifest.name && structUtils.stringifyIdent(w.manifest.name) === name,
+  );
+  if (byName) return byName;
+  const byDir = project.workspaces.find((w) => {
+    const rel = w.cwd
+      .replace(project.cwd, "")
+      .replace(/^\/+/, "")
+      .replace(/\/+$/, "");
+    return rel === name.replace(/^\/+/, "").replace(/\/+$/, "");
+  });
+  if (byDir) return byDir;
+  const available = project.workspaces
+    .map((w) => (w.manifest.name ? structUtils.stringifyIdent(w.manifest.name) : w.cwd))
+    .sort()
+    .join(", ");
+  throw new InstallError(`--workspace "${name}": no such workspace (available: ${available})`);
+}
 
 async function installWithYarn(req: InstallRequest): Promise<InstallResult> {
   // Bare non-registry specs (user/repo, file:, link:, tarball URLs) are not
@@ -327,6 +451,11 @@ async function installWithYarn(req: InstallRequest): Promise<InstallResult> {
   // form for those. Delegate the whole command to the yarn binary, which
   // resolves paths/URLs natively (relative paths via name extraction).
   if (req.packages.some((p) => !isRegistrySpec(p))) {
+    if (req.workspace) {
+      throw new InstallError(
+        `--workspace "${req.workspace}": the yarn binary fallback cannot target a workspace — cd into it or use name@range specs`,
+      );
+    }
     return installWithBinary("yarn", req);
   }
   let core: typeof import("@yarnpkg/core");
@@ -362,8 +491,15 @@ async function installWithYarn(req: InstallRequest): Promise<InstallResult> {
   } catch (err) {
     throw new InstallError(`no yarn project found under ${req.cwd}: ${errMsg(err)}`);
   }
-  const { workspace } = findResult;
-  if (!workspace) throw new InstallError(`no yarn workspace found under ${req.cwd}`);
+  const { project, workspace: nearest } = findResult;
+  if (!nearest) throw new InstallError(`no yarn workspace found under ${req.cwd}`);
+  // Same flag, same target on every manager: --workspace writes the named
+  // workspace's manifest (like `yarn workspace <name> add`) instead of the
+  // nearest one.
+  const workspace = req.workspace
+    ? selectYarnWorkspace(project, req.workspace, structUtils)
+    : nearest;
+  const wsSuffix = req.workspace ? ` (workspace: ${req.workspace})` : "";
 
   // Mirror npm semantics: caret default, exact pin on --save-exact/-E.
   const { exact, ignored } = splitExactFlag(req.extraArgs);
@@ -403,12 +539,13 @@ async function installWithYarn(req: InstallRequest): Promise<InstallResult> {
           : target.table;
     return {
       ok: true,
-      message: `dry-run: would add ${targets.map((d) => structUtils.stringifyDescriptor(d)).join(", ")} to ${where} (linker: ${linker}) — nothing written`,
+      message: `dry-run: would add ${targets.map((d) => structUtils.stringifyDescriptor(d)).join(", ")} to ${where}${wsSuffix} (linker: ${linker}) — nothing written`,
     };
   }
 
-  // Mirror `yarn add`: write the descriptors into the nearest workspace
-  // manifest, persist package.json, then run the project install.
+  // Mirror `yarn add`: write the descriptors into the workspace manifest
+  // (nearest, or the --workspace selection), persist package.json, then run
+  // the project install.
   // -O on a regular dep lands in optionalDependencies via ident-level
   // dependenciesMeta (how the Manifest round-trips the field); -P -O lands
   // in peerDependencies + peerDependenciesMeta.optional.
@@ -437,7 +574,7 @@ async function installWithYarn(req: InstallRequest): Promise<InstallResult> {
   if (report.hasErrors()) throw new InstallError("yarn install reported errors (see above)");
   return {
     ok: true,
-    message: `installed ${req.packages.join(", ")} via @yarnpkg/core${ignored.length ? ` (ignored non-API flags: ${ignored.join(" ")})` : ""}`,
+    message: `installed ${req.packages.join(", ")} via @yarnpkg/core${wsSuffix}${ignored.length ? ` (ignored non-API flags: ${ignored.join(" ")})` : ""}`,
   };
 }
 
@@ -454,16 +591,28 @@ const BINARY_INSTALL_ARGS: Record<string, { normal: string[]; dev: string[] }> =
   yarn: { normal: ["add"], dev: ["add", "--dev"] },
 };
 
+/**
+ * Workspace targeting for binary installers: pnpm/bun speak `--filter`
+ * natively, so the wrapper's `-w/--workspace` is translated (same flag,
+ * same target on every manager).
+ */
+function binaryWorkspaceFlags(pm: string, workspace: string | null): string[] {
+  if (!workspace || (pm !== "pnpm" && pm !== "bun")) return [];
+  return ["--filter", workspace];
+}
+
 async function installWithBinary(pm: string, req: InstallRequest): Promise<InstallResult> {
   const entry = BINARY_INSTALL_ARGS[pm];
   if (!entry) throw new InstallError(`unsupported package manager: ${pm}`);
   if (req.dev && (req.peer || req.optional)) {
     throw new InstallError("cannot combine --dev with --peer or --optional");
   }
+  const wsSuffix = req.workspace ? ` (workspace: ${req.workspace})` : "";
   const args = [
     ...(req.dev ? entry.dev : entry.normal),
     ...binarySaveFlags(pm, req),
     ...req.packages,
+    ...binaryWorkspaceFlags(pm, req.workspace),
     ...req.extraArgs,
   ];
   if (req.dryRun) {
@@ -471,7 +620,7 @@ async function installWithBinary(pm: string, req: InstallRequest): Promise<Insta
   }
   const code = spawnPm(pm, args, req.cwd);
   if (code !== 0) throw new InstallError(`${pm} exited with code ${code}`);
-  return { ok: true, message: `installed ${req.packages.join(", ")} via ${pm}` };
+  return { ok: true, message: `installed ${req.packages.join(", ")} via ${pm}${wsSuffix}` };
 }
 
 // --- passthrough: run / test / exec / remove / … ---------------------------

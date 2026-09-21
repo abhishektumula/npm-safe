@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -9,6 +9,8 @@ import {
   npmSaveTypeFor,
   performInstall,
   performPassthrough,
+  resolveNpmWorkspace,
+  selectYarnWorkspace,
   splitExactFlag,
   yarnTargetFor,
 } from "../src/install.ts";
@@ -21,6 +23,7 @@ function req(overrides: Partial<InstallRequest> = {}): InstallRequest {
     dev: false,
     peer: false,
     optional: false,
+    workspace: null,
     extraArgs: [],
     dryRun: true,
     ...overrides,
@@ -95,6 +98,88 @@ describe("binarySaveFlags", () => {
   });
 });
 
+describe("resolveNpmWorkspace", () => {
+  function wsDir(): string {
+    const dir = mkdtempSync(join(tmpdir(), "npms-ws-"));
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ name: "root", version: "0.0.0", workspaces: ["packages/*"] }),
+    );
+    return dir;
+  }
+  function addWs(dir: string, rel: string, name: string): void {
+    const full = join(dir, rel);
+    mkdirSync(full, { recursive: true });
+    writeFileSync(join(full, "package.json"), JSON.stringify({ name, version: "0.0.0" }));
+  }
+
+  test("matches by package name", () => {
+    const dir = wsDir();
+    try {
+      addWs(dir, "packages/api", "api");
+      expect(resolveNpmWorkspace(dir, "api")).toBe("api");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  test("matches by directory", () => {
+    const dir = wsDir();
+    try {
+      addWs(dir, "packages/api", "api");
+      expect(resolveNpmWorkspace(dir, "packages/api")).toBe("api");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  test("unknown name lists available workspaces", () => {
+    const dir = wsDir();
+    try {
+      addWs(dir, "packages/api", "api");
+      expect(() => resolveNpmWorkspace(dir, "nope")).toThrow(/available: api/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  test("no workspaces field throws", () => {
+    const dir = mkdtempSync(join(tmpdir(), "npms-ws-"));
+    try {
+      writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "solo" }));
+      expect(() => resolveNpmWorkspace(dir, "api")).toThrow(/no workspaces defined/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("selectYarnWorkspace", () => {
+  function fakeProject() {
+    return {
+      cwd: "/proj",
+      workspaces: [
+        { cwd: "/proj", manifest: { name: null } },
+        { cwd: "/proj/packages/api", manifest: { name: "api" } },
+      ],
+    };
+  }
+  function fakeUtils() {
+    return { stringifyIdent: (ident: unknown) => String(ident) };
+  }
+
+  test("matches by package name", () => {
+    const ws = selectYarnWorkspace(fakeProject() as never, "api", fakeUtils() as never);
+    expect(String(ws.cwd)).toBe("/proj/packages/api");
+  });
+  test("matches by relative directory", () => {
+    const ws = selectYarnWorkspace(fakeProject() as never, "packages/api", fakeUtils() as never);
+    expect(String(ws.cwd)).toBe("/proj/packages/api");
+  });
+  test("unknown name lists available workspaces", () => {
+    expect(() => selectYarnWorkspace(fakeProject() as never, "nope", fakeUtils() as never)).toThrow(
+      /available: .*api/,
+    );
+  });
+});
+
 describe("engineFor", () => {
   test("labels every manager", () => {
     expect(engineFor("npm")).toContain("arborist");
@@ -150,6 +235,12 @@ describe("binary boundary (dry-run only, no spawn)", () => {
     await expect(performInstall("pnpm", req({ dev: true, peer: true }))).rejects.toThrow(
       /cannot combine/,
     );
+  });
+  test("workspace becomes --filter on pnpm/bun", async () => {
+    const pnpm = await performInstall("pnpm", req({ workspace: "api" }));
+    expect(pnpm.message).toContain("pnpm add left-pad --filter api");
+    const bun = await performInstall("bun", req({ workspace: "api" }));
+    expect(bun.message).toContain("bun add left-pad --filter api");
   });
 });
 
@@ -230,6 +321,66 @@ describe("yarn engine dry-runs (no network: ranged specs only)", () => {
         req({ cwd: dir, packages: ["a@^1"], peer: true, optional: true }),
       );
       expect(res.message).toContain("peerDependencies (optional)");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  test("workspace selects the named manifest", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "npms-yarn-ws-"));
+    try {
+      writeFileSync(
+        join(dir, "package.json"),
+        JSON.stringify({ name: "root", version: "0.0.0", workspaces: ["packages/*"] }),
+      );
+      mkdirSync(join(dir, "packages", "api"), { recursive: true });
+      writeFileSync(
+        join(dir, "packages", "api", "package.json"),
+        JSON.stringify({ name: "api", version: "0.0.0" }),
+      );
+      const res = await performInstall(
+        "yarn",
+        req({ cwd: dir, packages: ["a@^1"], workspace: "api" }),
+      );
+      expect(res.message).toContain("(workspace: api)");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  test("unknown workspace fails with available names", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "npms-yarn-ws-"));
+    try {
+      writeFileSync(
+        join(dir, "package.json"),
+        JSON.stringify({ name: "root", version: "0.0.0", workspaces: ["packages/*"] }),
+      );
+      mkdirSync(join(dir, "packages", "api"), { recursive: true });
+      writeFileSync(
+        join(dir, "packages", "api", "package.json"),
+        JSON.stringify({ name: "api", version: "0.0.0" }),
+      );
+      await expect(
+        performInstall("yarn", req({ cwd: dir, packages: ["a@^1"], workspace: "nope" })),
+      ).rejects.toThrow(/available: .*api/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  test("workspace on bare project install errors", async () => {
+    const dir = yarnDir(true);
+    try {
+      await expect(
+        performInstall("yarn", req({ cwd: dir, packages: [], workspace: "api" })),
+      ).rejects.toThrow(/cannot filter a project install/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  test("workspace with non-registry specs errors", async () => {
+    const dir = yarnDir(true);
+    try {
+      await expect(
+        performInstall("yarn", req({ cwd: dir, packages: ["user/repo"], workspace: "api" })),
+      ).rejects.toThrow(/binary fallback cannot target a workspace/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

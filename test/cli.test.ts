@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { helpText, parseArgs, saveFlagsSuffix } from "../src/cli.ts";
+import { helpText, parseArgs, saveFlagsSuffix, workspaceSuffix } from "../src/cli.ts";
 import { stripAnsi } from "./helper.ts";
 
 describe("parseArgs routing", () => {
@@ -68,6 +68,24 @@ describe("parseArgs flags", () => {
     expect(saveFlagsSuffix({ dev: false, peer: false, optional: false })).toBe("");
     expect(saveFlagsSuffix({ dev: true, peer: false, optional: false })).toBe(" --dev");
     expect(saveFlagsSuffix({ dev: false, peer: true, optional: true })).toBe(" --peer --optional");
+  });
+  test("workspace flag forms", () => {
+    expect(parseArgs(["install", "a", "-w", "api"]).opts.workspace).toBe("api");
+    expect(parseArgs(["install", "a", "--workspace", "api"]).opts.workspace).toBe("api");
+    expect(parseArgs(["install", "a", "--workspace=api"]).opts.workspace).toBe("api");
+    expect(parseArgs(["install", "a"]).opts.workspace).toBeNull();
+  });
+  test("-w without value is null", () => {
+    expect(parseArgs(["install", "a", "-w"]).opts.workspace).toBeNull();
+  });
+  test("workspace value is not a package", () => {
+    const p = parseArgs(["install", "a", "-w", "api"]);
+    expect(p.opts.packages).toEqual(["a"]);
+    expect(p.opts.extraArgs).not.toContain("-w");
+  });
+  test("workspaceSuffix", () => {
+    expect(workspaceSuffix({ workspace: null })).toBe("");
+    expect(workspaceSuffix({ workspace: "api" })).toBe(" (workspace: api)");
   });
   test("--pm space and equals forms", () => {
     expect(parseArgs(["install", "a", "--pm", "yarn"]).opts.pmOverride).toBe("yarn");

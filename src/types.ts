@@ -44,6 +44,8 @@ export interface CliOptions {
   dev: boolean;
   peer: boolean;
   optional: boolean;
+  /** target workspace package (`-w/--workspace`); null = current project */
+  workspace: string | null;
   dryRun: boolean;
   json: boolean;
   pmOverride: string | null;
@@ -56,6 +58,8 @@ export interface InstallRequest {
   dev: boolean;
   peer: boolean;
   optional: boolean;
+  /** target workspace package; null = current project */
+  workspace: string | null;
   /** extras the user passed; known ones are mapped to engine options */
   extraArgs: string[];
   dryRun: boolean;

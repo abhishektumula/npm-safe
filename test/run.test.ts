@@ -207,6 +207,24 @@ describe("run", () => {
     expect(output()).toContain("cannot combine");
     expect(process.exitCode).toBe(1);
   });
+  test("--filter on an engine errors with the wrapper equivalent", async () => {
+    await run(["add", "pkgr1", "--filter", "api", "--dry-run", "--pm", "npm"]);
+    expect(output()).toContain("--filter is not supported with npm");
+    expect(output()).toContain("--workspace");
+    expect(process.exitCode).toBe(1);
+  });
+  test("-w translates to --filter on binaries", async () => {
+    stubRegistry(["pkgr1"]);
+    await run(["add", "pkgr1", "-w", "api", "--dry-run", "--pm", "bun"]);
+    expect(output()).toContain("--filter api");
+    expect(output()).toContain("(workspace: api)");
+    expect(process.exitCode).toBe(0);
+  });
+  test("--workspace with brew errors", async () => {
+    await run(["add", "pkgr1", "--workspace", "api", "--dry-run", "--pm", "brew"]);
+    expect(output()).toContain("not supported with brew");
+    expect(process.exitCode).toBe(1);
+  });
   test("mix of registry and non-registry specs", async () => {
     stubRegistry(["pkgr1"]);
     await run(["add", "pkgr1", "user/repo", "--dry-run", "--pm", "bun", "-y"]);

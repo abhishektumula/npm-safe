@@ -106,6 +106,7 @@ export function parseArgs(argv: string[]): Parsed {
     dev: false,
     peer: false,
     optional: false,
+    workspace: null,
     dryRun: false,
     json: false,
     pmOverride: null,
@@ -131,6 +132,8 @@ export function parseArgs(argv: string[]): Parsed {
     else if (a === "-P" || a === "--peer" || a === "--save-peer") opts.peer = true;
     else if (a === "-O" || a === "-o" || a === "--optional" || a === "--save-optional")
       opts.optional = true;
+    else if (a === "-w" || a === "--workspace") opts.workspace = argv[++i] ?? null;
+    else if (a.startsWith("--workspace=")) opts.workspace = a.slice(12) || null;
     else if (a === "--dry-run") opts.dryRun = true;
     else if (a === "--json") opts.json = true;
     else if (a === "-h" || a === "--help") help = true;
@@ -176,6 +179,11 @@ export function saveFlagsSuffix(o: { dev: boolean; peer: boolean; optional: bool
   return `${o.dev ? " --dev" : ""}${o.peer ? " --peer" : ""}${o.optional ? " --optional" : ""}`;
 }
 
+/** ` (workspace: api)` suffix for installer status lines, or "" when unset. */
+export function workspaceSuffix(o: { workspace: string | null }): string {
+  return o.workspace ? ` (workspace: ${o.workspace})` : "";
+}
+
 export function helpText(): string {
   return `
   ${paint(c.pink, "◆ npms")} ${paint(c.dim, `v${VERSION} — npm wrapper with safety intel before you install`)}
@@ -197,6 +205,8 @@ export function helpText(): string {
     -D, --dev        install as devDependency (--save-dev / --dev per PM)
     -P, --peer       install as peerDependency (-P means peer here, not pnpm's -P/prod)
     -O, --optional   install as optionalDependency (both = optional peer)
+    -w, --workspace <name>
+                     add to a workspace package (pnpm/bun get --filter <name>)
     --pm <name>      force package manager: npm | bun | pnpm | yarn | brew
     --dry-run        show intel only, never install
     --json           machine-readable report instead of the color card
@@ -216,7 +226,9 @@ export function helpText(): string {
     or run the global install directly. Unknown flags are forwarded to
     binary installers; the engines map --save-exact/-E plus the -D/-P/-O
     save flags (--peer/-P means peer here: pnpm-native -P is re-emitted
-    as --save-peer) and report the rest as ignored.
+    as --save-peer) and report the rest as ignored. -w/--workspace targets
+    one workspace package on every manager (same command, same target);
+    --filter stays binary-only and is rejected on the npm/yarn engines.
 `;
 }
 
@@ -277,6 +289,28 @@ export async function run(argv: string[]): Promise<void> {
     return;
   }
 
+  // --filter/-F only exist on the pnpm/bun CLIs. The npm/yarn engines have
+  // no such flag, so reject it with the wrapper equivalent instead of
+  // silently installing into the wrong manifest.
+  const filterFlag = opts.extraArgs.find((a) => a === "--filter" || a === "-F");
+  if (filterFlag && usesInProcessEngine) {
+    console.error(
+      paint(c.red, `  ✖ ${filterFlag} is not supported with ${pm} — use -w/--workspace <name>.`),
+    );
+    console.error(
+      paint(c.dim, "  Or pick a binary manager (--pm pnpm|bun) that speaks --filter natively."),
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  // brew has no workspace concept at all — fail instead of dropping the flag.
+  if (opts.workspace && pm === "brew") {
+    console.error(paint(c.red, "  ✖ --workspace is not supported with brew (no workspaces)."));
+    process.exitCode = 1;
+    return;
+  }
+
   // Bare npms install (no packages) -> project install (like npm install)
   if (opts.packages.length === 0) {
     if (help) {
@@ -284,7 +318,10 @@ export async function run(argv: string[]): Promise<void> {
       return;
     }
     console.log(
-      paint(c.dim, `  ◈ installer: ${pm} via ${engineFor(pm)} (detected: ${via})${saveFlagsSuffix(opts)}`),
+      paint(
+        c.dim,
+        `  ◈ installer: ${pm} via ${engineFor(pm)} (detected: ${via})${saveFlagsSuffix(opts)}${workspaceSuffix(opts)}`,
+      ),
     );
     const req = {
       cwd: process.cwd(),
@@ -292,6 +329,7 @@ export async function run(argv: string[]): Promise<void> {
       dev: opts.dev,
       peer: opts.peer,
       optional: opts.optional,
+      workspace: opts.workspace,
       extraArgs: opts.extraArgs,
       dryRun: opts.dryRun,
     };
@@ -334,7 +372,10 @@ export async function run(argv: string[]): Promise<void> {
   }
 
   console.log(
-    paint(c.dim, `  ◈ installer: ${pm} via ${engineFor(pm)} (detected: ${via})${saveFlagsSuffix(opts)}`),
+    paint(
+      c.dim,
+      `  ◈ installer: ${pm} via ${engineFor(pm)} (detected: ${via})${saveFlagsSuffix(opts)}${workspaceSuffix(opts)}`,
+    ),
   );
 
   const nonRegistry = reports.filter((r) => r.isNonRegistry);
@@ -356,6 +397,7 @@ export async function run(argv: string[]): Promise<void> {
     dev: opts.dev,
     peer: opts.peer,
     optional: opts.optional,
+    workspace: opts.workspace,
     extraArgs: opts.extraArgs,
     dryRun: opts.dryRun,
   };
