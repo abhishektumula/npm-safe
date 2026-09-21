@@ -11,8 +11,7 @@ is written**:
 
 …then a `[y/N]` prompt. Confirm, and it installs through your project's own
 package manager. Three or more packages collapse to compact rows so the
-screen stays scannable. (Package name on the registry: `npm-safe`.
-`npm-safe` remains as a CLI alias.)
+screen stays scannable. (Registry package name: `npm-safe`.)
 
 ## Install
 
@@ -29,7 +28,7 @@ bun ./index.ts install express
 Or link it as a global command:
 
 ```bash
-bun link             # exposes `npms` (and `npm-safe`) on your PATH
+bun link             # exposes `npms` on your PATH
 ```
 
 ## Usage
@@ -91,9 +90,9 @@ a `dist/` bundle that also runs on Node ≥18.
 
 ## Packaging & releasing
 
-Binaries shipped: `npms` (primary) + `npm-safe` (alias), both declared in
-`package.json`. Full procedure — versioning, publish, release checklist —
-lives in [`docs/packaging.md`](docs/packaging.md).
+Binary shipped: `npms`, declared in `package.json`. Full procedure —
+versioning, publish, release checklist — lives in
+[`docs/packaging.md`](docs/packaging.md).
 
 ## Extending
 

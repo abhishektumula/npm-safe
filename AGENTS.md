@@ -2,7 +2,7 @@
 
 `npms` (package `npm-safe`) is an npm wrapper: it shows package intel
 (dependencies, health) **before** installing, asks `[y/N]`, then installs
-through the project’s own package manager. `npm-safe` remains as a CLI alias.
+through the project’s own package manager.
 
 Read this file before changing anything. It tells you where things live,
 what rules are load-bearing, and exactly when to commit.
@@ -105,7 +105,7 @@ Keep latency minimal (parallel fetches, bounded BFS), output colorful
 - `README.md`: description, install, every command (dev/build/test/
   package/release), flags, examples.
 - `docs/extending.md`: how to add a package manager, intel source, or flag.
-- `docs/packaging.md`: bin (`npms` + `npm-safe` alias), build, publish, release checklist.
+- `docs/packaging.md`: bin (`npms`), build, publish, release checklist.
 - Code change without matching doc update = incomplete set.
 
 ## 8. Commit policy — when to commit
