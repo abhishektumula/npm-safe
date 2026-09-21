@@ -17,6 +17,10 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "next-auth": "^4.24.15"
+    "@npmcli/arborist": "^10.0.2",
+    "@yarnpkg/core": "^4.9.1",
+    "@yarnpkg/plugin-nm": "^4.1.1",
+    "@yarnpkg/plugin-npm": "^3.7.1",
+    "@yarnpkg/plugin-pnp": "^4.2.1"
   }
 }

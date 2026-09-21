@@ -1,10 +1,10 @@
-import { spawnSync } from "node:child_process";
 import { createInterface } from "node:readline";
 import { c, paint } from "./colors.ts";
 import { fetchNpmMeta } from "./npm.ts";
 import { fetchHealth } from "./snyk.ts";
 import { countTransitive } from "./deps.ts";
-import { detectPm, installArgs } from "./pm.ts";
+import { detectPm } from "./pm.ts";
+import { engineFor, performInstall, performPassthrough, InstallError } from "./install.ts";
 import { render } from "./render.ts";
 import { splitSpec } from "./spec.ts";
 import type { CliOptions, PackageReport } from "./types.ts";
@@ -185,7 +185,11 @@ export function helpText(): string {
   ${paint(c.cyan, "notes")}
     3+ packages switch to a compact row: total(direct, transitive), no repo url.
     Manager is auto-detected from local lockfiles (+ packageManager field),
-    defaulting to npm. Unknown flags are forwarded to the installer.
+    defaulting to npm. npm/yarn install in-process via their official
+    engines (@npmcli/arborist, @yarnpkg/core); pnpm/bun/brew fall back
+    to their binaries (no programmatic API exists). Unknown flags are
+    forwarded to binary installers; the engines map --save-exact/-E
+    and report the rest as ignored.
     (alias: npm-safe still works)
 `;
 }
@@ -239,11 +243,6 @@ async function confirm(): Promise<boolean> {
   }
 }
 
-function runPm(pm: string, args: string[]): number {
-  const res = spawnSync(pm, args, { stdio: "inherit" });
-  return res.status ?? 1;
-}
-
 export async function run(argv: string[]): Promise<void> {
   const { cmd, subcommand, passthroughArgs, opts, help, version } = parseArgs(argv);
   if (version) {
@@ -259,11 +258,17 @@ export async function run(argv: string[]): Promise<void> {
       return;
     }
     console.log(paint(c.dim, `  ◈ ${pm} ${subcommand} (via ${via})`));
-    if (opts.dryRun) {
-      console.log(paint(c.dim, `  ◌ dry-run: would run \`${pm} ${[subcommand, ...passthroughArgs].join(" ")}\``));
-      return;
+    try {
+      process.exitCode = await performPassthrough(
+        pm,
+        [subcommand, ...passthroughArgs],
+        process.cwd(),
+        opts.dryRun,
+      );
+    } catch (err) {
+      console.error(paint(c.red, `  ✖ ${err instanceof InstallError ? err.message : String(err)}`));
+      process.exitCode = 1;
     }
-    process.exitCode = runPm(pm, [subcommand, ...passthroughArgs]);
     return;
   }
 
@@ -281,13 +286,9 @@ export async function run(argv: string[]): Promise<void> {
     console.log(render(reports, opts.showAll));
   }
 
-  const args = installArgs(pm, opts.dev);
-  if (!args) {
-    console.error(paint(c.red, `  ✖ unsupported package manager: ${pm}`));
-    process.exitCode = 1;
-    return;
-  }
-  console.log(paint(c.dim, `  ◈ installer: ${pm} (via ${via})${opts.dev ? " --dev" : ""}`));
+  console.log(
+    paint(c.dim, `  ◈ installer: ${pm} via ${engineFor(pm)} (detected: ${via})${opts.dev ? " --dev" : ""}`),
+  );
 
   if (reports.every((r) => r.meta === null)) {
     console.error(paint(c.red, "  ✖ nothing to install — all lookups failed."));
@@ -295,16 +296,33 @@ export async function run(argv: string[]): Promise<void> {
     return;
   }
   const installable = reports.filter((r) => r.meta).map((r) => r.query);
-  const fullArgs = [...args, ...installable, ...opts.extraArgs];
+  const req = {
+    cwd: process.cwd(),
+    packages: installable,
+    dev: opts.dev,
+    extraArgs: opts.extraArgs,
+    dryRun: opts.dryRun,
+  };
 
   if (opts.dryRun) {
-    console.log(paint(c.dim, `  ◌ dry-run: would run \`${pm} ${fullArgs.join(" ")}\``));
+    const res = await performInstall(pm, req).catch((err) => ({
+      ok: false as const,
+      message: String(err instanceof InstallError ? err.message : err),
+    }));
+    console.log(paint(c.dim, `  ◌ ${res.message}`));
+    if (!res.ok) process.exitCode = 1;
     return;
   }
   if (!opts.yes && !(await confirm())) {
     console.log(paint(c.dim, "  ◌ aborted. nothing installed."));
     return;
   }
-  console.log(paint(c.cyan, `\n  ▶ ${pm} ${fullArgs.join(" ")}\n`));
-  process.exitCode = runPm(pm, fullArgs);
+  console.log(paint(c.cyan, `\n  ▶ installing ${installable.join(", ")} via ${engineFor(pm)}\n`));
+  try {
+    const res = await performInstall(pm, req);
+    console.log(paint(c.green, `  ✔ ${res.message}`));
+  } catch (err) {
+    console.error(paint(c.red, `  ✖ ${err instanceof InstallError ? err.message : String(err)}`));
+    process.exitCode = 1;
+  }
 }
