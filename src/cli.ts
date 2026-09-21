@@ -107,6 +107,7 @@ export function parseArgs(argv: string[]): Parsed {
     peer: false,
     optional: false,
     workspace: null,
+    registry: null,
     dryRun: false,
     json: false,
     pmOverride: null,
@@ -134,6 +135,8 @@ export function parseArgs(argv: string[]): Parsed {
       opts.optional = true;
     else if (a === "-w" || a === "--workspace") opts.workspace = argv[++i] ?? null;
     else if (a.startsWith("--workspace=")) opts.workspace = a.slice(12) || null;
+    else if (a === "--registry") opts.registry = argv[++i] ?? null;
+    else if (a.startsWith("--registry=")) opts.registry = a.slice(11) || null;
     else if (a === "--dry-run") opts.dryRun = true;
     else if (a === "--json") opts.json = true;
     else if (a === "-h" || a === "--help") help = true;
@@ -184,6 +187,12 @@ export function workspaceSuffix(o: { workspace: string | null }): string {
   return o.workspace ? ` (workspace: ${o.workspace})` : "";
 }
 
+/** ` (registry: host/…)` suffix, or "" when default. Never leaks credentials. */
+export function registrySuffix(o: { registry: string | null }): string {
+  if (!o.registry) return "";
+  return ` (registry: ${o.registry.replace(/\/\/[^/]*@/, "//***@")})`;
+}
+
 export function helpText(): string {
   return `
   ${paint(c.pink, "◆ npms")} ${paint(c.dim, `v${VERSION} — npm wrapper with safety intel before you install`)}
@@ -207,6 +216,7 @@ export function helpText(): string {
     -O, --optional   install as optionalDependency (both = optional peer)
     -w, --workspace <name>
                      add to a workspace package (pnpm/bun get --filter <name>)
+    --registry <url> use a private registry (.npmrc + NPM_TOKEN also work)
     --pm <name>      force package manager: npm | bun | pnpm | yarn | brew
     --dry-run        show intel only, never install
     --json           machine-readable report instead of the color card
@@ -320,7 +330,7 @@ export async function run(argv: string[]): Promise<void> {
     console.log(
       paint(
         c.dim,
-        `  ◈ installer: ${pm} via ${engineFor(pm)} (detected: ${via})${saveFlagsSuffix(opts)}${workspaceSuffix(opts)}`,
+        `  ◈ installer: ${pm} via ${engineFor(pm)} (detected: ${via})${saveFlagsSuffix(opts)}${workspaceSuffix(opts)}${registrySuffix(opts)}`,
       ),
     );
     const req = {
@@ -330,6 +340,7 @@ export async function run(argv: string[]): Promise<void> {
       peer: opts.peer,
       optional: opts.optional,
       workspace: opts.workspace,
+      registry: opts.registry,
       extraArgs: opts.extraArgs,
       dryRun: opts.dryRun,
     };
@@ -363,7 +374,10 @@ export async function run(argv: string[]): Promise<void> {
   }
 
   process.stdout.write(paint(c.dim, `  ◌ fetching intel for ${opts.packages.join(", ")} …\n`));
-  const reports = await inspectPackages(opts.packages);
+  const reports = await inspectPackages(opts.packages, {
+    cwd: process.cwd(),
+    registry: opts.registry,
+  });
 
   if (opts.json) {
     console.log(JSON.stringify(reports, null, 2));
@@ -374,7 +388,7 @@ export async function run(argv: string[]): Promise<void> {
   console.log(
     paint(
       c.dim,
-      `  ◈ installer: ${pm} via ${engineFor(pm)} (detected: ${via})${saveFlagsSuffix(opts)}${workspaceSuffix(opts)}`,
+      `  ◈ installer: ${pm} via ${engineFor(pm)} (detected: ${via})${saveFlagsSuffix(opts)}${workspaceSuffix(opts)}${registrySuffix(opts)}`,
     ),
   );
 
@@ -398,6 +412,7 @@ export async function run(argv: string[]): Promise<void> {
     peer: opts.peer,
     optional: opts.optional,
     workspace: opts.workspace,
+    registry: opts.registry,
     extraArgs: opts.extraArgs,
     dryRun: opts.dryRun,
   };

@@ -2,9 +2,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { fetchNpmMeta } from "../src/npm.ts";
 
 const realFetch = globalThis.fetch;
+const realToken = process.env.NPM_TOKEN;
 
 afterEach(() => {
   globalThis.fetch = realFetch;
+  if (realToken === undefined) delete process.env.NPM_TOKEN;
+  else process.env.NPM_TOKEN = realToken;
 });
 
 function stubFetch(payload: unknown, status = 200) {
@@ -13,6 +16,21 @@ function stubFetch(payload: unknown, status = 200) {
     ok: status >= 200 && status < 300,
     json: async () => payload,
   })) as unknown as typeof fetch;
+}
+
+function captureFetch(payload: unknown, status = 200): { url: string; auth: string | null } {
+  const seen = { url: "", auth: null as string | null };
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    seen.url = String(url);
+    const headers = init?.headers as Record<string, string> | undefined;
+    seen.auth = headers?.["Authorization"] ?? null;
+    return {
+      status,
+      ok: status >= 200 && status < 300,
+      json: async () => payload,
+    };
+  }) as unknown as typeof fetch;
+  return seen;
 }
 
 describe("fetchNpmMeta", () => {
@@ -60,10 +78,27 @@ describe("fetchNpmMeta", () => {
   });
   test("404 throws not-found", async () => {
     stubFetch({}, 404);
-    await expect(fetchNpmMeta("nope")).rejects.toThrow('not found on npm');
+    await expect(fetchNpmMeta("nope")).rejects.toThrow('not found (//registry.npmjs.org/)');
   });
   test("5xx throws with status", async () => {
     stubFetch({}, 500);
     await expect(fetchNpmMeta("x")).rejects.toThrow("responded 500");
+  });
+  test("401 hints at auth", async () => {
+    stubFetch({}, 401);
+    await expect(fetchNpmMeta("priv")).rejects.toThrow(/NPM_TOKEN/);
+  });
+  test("--registry override changes the request URL", async () => {
+    const seen = captureFetch({ name: "x", version: "1.0.0" });
+    await fetchNpmMeta("x", { registry: "https://npm.acme.com" });
+    expect(seen.url).toBe("https://npm.acme.com/x/latest");
+    expect(seen.auth).toBeNull();
+  });
+  test("NPM_TOKEN is sent as a Bearer header", async () => {
+    process.env.NPM_TOKEN = "tok123";
+    const seen = captureFetch({ name: "x", version: "1.0.0" });
+    await fetchNpmMeta("x");
+    expect(seen.url).toBe("https://registry.npmjs.org/x/latest");
+    expect(seen.auth).toBe("Bearer tok123");
   });
 });

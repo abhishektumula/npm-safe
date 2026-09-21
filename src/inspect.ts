@@ -1,13 +1,13 @@
 // Package inspection: registry metadata + health + transitive counts.
 // Pure orchestration over the intel sources — reusable without the CLI
 // (import inspectPackages for programmatic use).
-import { fetchNpmMeta } from "./npm.ts";
+import { fetchNpmMeta, type FetchMetaOptions } from "./npm.ts";
 import { fetchHealth } from "./snyk.ts";
 import { countTransitive } from "./deps.ts";
 import { splitSpec, isRegistrySpec } from "./spec.ts";
 import type { PackageReport } from "./types.ts";
 
-export async function inspectOne(query: string): Promise<PackageReport> {
+export async function inspectOne(query: string, opts?: FetchMetaOptions): Promise<PackageReport> {
   const t0 = Date.now();
 
   // Non-registry specs (GitHub shorthand, file:, link:, tarball URLs) skip intel
@@ -28,7 +28,10 @@ export async function inspectOne(query: string): Promise<PackageReport> {
 
   const { name } = splitSpec(query);
   const lookup = name || query;
-  const [metaRes, health] = await Promise.allSettled([fetchNpmMeta(lookup), fetchHealth(lookup)]);
+  const [metaRes, health] = await Promise.allSettled([
+    fetchNpmMeta(lookup, opts),
+    fetchHealth(lookup),
+  ]);
   if (metaRes.status === "rejected") {
     return {
       query,
@@ -43,7 +46,7 @@ export async function inspectOne(query: string): Promise<PackageReport> {
     };
   }
   const meta = metaRes.value;
-  const { count, names } = await countTransitive(meta.directDeps);
+  const { count, names } = await countTransitive(meta.directDeps, opts);
   return {
     query,
     meta,
@@ -58,6 +61,9 @@ export async function inspectOne(query: string): Promise<PackageReport> {
 }
 
 /** Inspect every query in parallel; order of results matches input. */
-export function inspectPackages(queries: string[]): Promise<PackageReport[]> {
-  return Promise.all(queries.map(inspectOne));
+export function inspectPackages(
+  queries: string[],
+  opts?: FetchMetaOptions,
+): Promise<PackageReport[]> {
+  return Promise.all(queries.map((q) => inspectOne(q, opts)));
 }

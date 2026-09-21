@@ -1,7 +1,13 @@
 import type { NpmMeta } from "./types.ts";
 import { encodePkg } from "./spec.ts";
+import { authHeaders, loadNpmrc, nerf, registryFor } from "./npmrc.ts";
 
-const REGISTRY = "https://registry.npmjs.org";
+export interface FetchMetaOptions {
+  /** `--registry` override (flag wins over .npmrc and env) */
+  registry?: string | null;
+  /** project dir for .npmrc discovery (defaults to process.cwd()) */
+  cwd?: string;
+}
 
 function cleanRepoUrl(raw: unknown): string {
   if (!raw) return "n/a";
@@ -24,12 +30,22 @@ function cleanAuthor(raw: unknown): string {
 
 // Fast path: /:pkg/latest is a few KB vs multi-MB full packument.
 // Same data that powers npmjs.com/package/:pkg, minus the HTML weight.
-export async function fetchNpmMeta(name: string): Promise<NpmMeta> {
-  const res = await fetch(`${REGISTRY}/${encodePkg(name)}/latest`, {
-    headers: { Accept: "application/json" },
+// Private registries work via `--registry`, .npmrc (`registry`,
+// `@scope:registry`, `//host/:_authToken` with ${VAR} interpolation),
+// or the NPM_TOKEN env var.
+export async function fetchNpmMeta(name: string, opts?: FetchMetaOptions): Promise<NpmMeta> {
+  const cfg = loadNpmrc(opts?.cwd ?? process.cwd());
+  const registry = registryFor(name, cfg, opts?.registry);
+  const res = await fetch(`${registry}/${encodePkg(name)}/latest`, {
+    headers: { Accept: "application/json", ...authHeaders(registry, cfg) },
     signal: AbortSignal.timeout(8000),
   });
-  if (res.status === 404) throw new Error(`package "${name}" not found on npm`);
+  if (res.status === 404) throw new Error(`package "${name}" not found (${nerf(registry)})`);
+  if (res.status === 401 || res.status === 403) {
+    throw new Error(
+      `registry responded ${res.status} for "${name}" — private registry? set NPM_TOKEN or check .npmrc auth for ${nerf(registry)}`,
+    );
+  }
   if (!res.ok) throw new Error(`registry responded ${res.status}`);
   const j = (await res.json()) as Record<string, any>;
   const deps = j.dependencies && typeof j.dependencies === "object" ? Object.keys(j.dependencies) : [];

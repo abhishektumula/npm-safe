@@ -6,6 +6,9 @@
 //           foremost a Node API that can be used programmatically") +
 //           plugin-npm for registry resolution + the linker plugin
 //           matching the project's nodeLinker (pnp | node-modules).
+//           Plugins are pre-registered with Configuration.find (like the
+//           yarn CLI) so plugin-provided .yarnrc.yml settings
+//           (npmRegistryServer, npmScopes, npmAuthToken) are honored.
 //           Bare non-registry specs (user/repo, file:, link:, tarballs)
 //           aren't valid yarn descriptors, so those fall back to the
 //           yarn binary, which resolves them natively.
@@ -21,6 +24,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync, type Dirent } from "node:fs";
 import { join } from "node:path";
 import { fetchNpmMeta } from "./npm.ts";
+import { arboristRegistryOpts, loadNpmrc } from "./npmrc.ts";
 import { isRegistrySpec } from "./spec.ts";
 import { ALL_PMS } from "./pm.ts";
 import type { InstallRequest, InstallResult } from "./types.ts";
@@ -246,6 +250,7 @@ async function projectInstallWithNpm(req: InstallRequest): Promise<InstallResult
     saveType,
     savePrefix: exact ? "" : "^",
     workspaces: ws ? [ws] : [],
+    ...arboristRegistryOpts(loadNpmrc(req.cwd), req.registry),
   });
   try {
     await arb.buildIdealTree({});
@@ -280,19 +285,11 @@ async function projectInstallWithYarn(req: InstallRequest): Promise<InstallResul
   } catch {
     throw new InstallError("yarn engine unavailable: @yarnpkg/core is not installed");
   }
-  const { Configuration, Project, StreamReport, Cache } = core;
-  const { npath } = await import("@yarnpkg/fslib");
-
-  const cwd = npath.toPortablePath(req.cwd);
-  const configuration = await Configuration.find(cwd, null);
-
-  const npmPlugin = (await import("@yarnpkg/plugin-npm")).default;
-  configuration.activatePlugin("@yarnpkg/plugin-npm", npmPlugin);
-  configuration.activatePlugin("@yarnpkg/plugin-nm", (await import("@yarnpkg/plugin-nm")).default);
-  configuration.activatePlugin(
-    "@yarnpkg/plugin-pnp",
-    (await import("@yarnpkg/plugin-pnp")).default,
-  );
+  const { Project, StreamReport, Cache } = core;
+  const { configuration, portableCwd: cwd } = await loadYarnConfiguration(core, req.cwd);
+  // --registry wins over .yarnrc.yml (auth still comes from .yarnrc.yml /
+  // environment, which Configuration.find already loaded).
+  if (req.registry) applyYarnRegistryOverride(configuration, req.registry, cwd);
   const linker = configuration.get("nodeLinker");
 
   let findResult: Awaited<ReturnType<typeof Project.find>>;
@@ -346,7 +343,9 @@ async function projectInstallWithBinary(pm: string, req: InstallRequest): Promis
   const baseArgs = BINARY_PROJECT_INSTALL_ARGS[pm];
   if (!baseArgs) throw new InstallError(`unsupported package manager: ${pm}`);
   const wsSuffix = req.workspace ? ` (workspace: ${req.workspace})` : "";
-  const args = [...baseArgs, ...binaryWorkspaceFlags(pm, req.workspace), ...req.extraArgs];
+  const registryArgs =
+    req.registry && (pm === "pnpm" || pm === "bun") ? ["--registry", req.registry] : [];
+  const args = [...baseArgs, ...binaryWorkspaceFlags(pm, req.workspace), ...registryArgs, ...req.extraArgs];
   if (req.dryRun) {
     return { ok: true, message: `dry-run: would run \`${pm} ${args.join(" ")}\` — nothing executed` };
   }
@@ -378,12 +377,15 @@ async function installWithNpm(req: InstallRequest): Promise<InstallResult> {
   const wsSuffix = ws ? ` (workspace: ${ws})` : "";
 
   // savePrefix "" pins the exact version (npm's --save-exact); "^" is npm's default.
+  // Registry + auth ride as flat options (the shape npm layers over .npmrc —
+  // Arborist itself never reads .npmrc; pacote consumes these downstream).
   const arb = new Arborist({
     path: req.cwd,
     save: true,
     saveType,
     savePrefix: exact ? "" : "^",
     workspaces: ws ? [ws] : [],
+    ...arboristRegistryOpts(loadNpmrc(req.cwd), req.registry),
   });
   try {
     await arb.buildIdealTree({ add: req.packages, saveType });
@@ -414,6 +416,51 @@ async function installWithNpm(req: InstallRequest): Promise<InstallResult> {
 type YarnCore = typeof import("@yarnpkg/core");
 type YarnProject = Awaited<ReturnType<YarnCore["Project"]["find"]>>["project"];
 type YarnWorkspace = Awaited<ReturnType<YarnCore["Project"]["find"]>>["workspace"];
+type YarnConfiguration = Awaited<ReturnType<YarnCore["Configuration"]["find"]>>;
+type YarnPortablePath = import("@yarnpkg/fslib").PortablePath;
+
+const YARN_ENGINE_PLUGINS = ["@yarnpkg/plugin-npm", "@yarnpkg/plugin-nm", "@yarnpkg/plugin-pnp"];
+
+/**
+ * Load the yarn Configuration with the engine plugins pre-registered, so
+ * plugin-provided settings in .yarnrc.yml (npmRegistryServer, npmScopes,
+ * npmAuthToken — i.e. every private-registry setup) are recognized instead
+ * of throwing "Unrecognized configuration setting". Mirrors how the yarn
+ * CLI itself feeds its bundled plugins to Configuration.find. `core` is
+ * passed in because @yarnpkg/core is lazily imported, never at module load.
+ */
+export async function loadYarnConfiguration(
+  core: YarnCore,
+  cwd: string,
+): Promise<{ configuration: YarnConfiguration; portableCwd: YarnPortablePath }> {
+  const { Configuration } = core;
+  const { npath } = await import("@yarnpkg/fslib");
+  const portableCwd = npath.toPortablePath(cwd);
+  const modules = new Map<string, unknown>();
+  for (const name of YARN_ENGINE_PLUGINS) modules.set(name, await import(name));
+  // find() activates these itself; activating twice throws (settings exist).
+  const configuration = await Configuration.find(portableCwd, {
+    modules,
+    plugins: new Set<string>(YARN_ENGINE_PLUGINS),
+  });
+  return { configuration, portableCwd };
+}
+
+/**
+ * Apply a `--registry` override to a loaded yarn Configuration (CLI flag wins
+ * over .yarnrc.yml, like the yarn CLI's own precedence). Auth still comes
+ * from the project's .yarnrc.yml / environment, which Configuration.find
+ * already loads. Call after activating plugin-npm so the setting is known.
+ */
+export function applyYarnRegistryOverride(
+  configuration: YarnConfiguration,
+  registry: string,
+  cwd: YarnConfiguration["startingCwd"],
+): void {
+  configuration.useWithSource("<command line>", { npmRegistryServer: registry }, cwd, {
+    overwrite: true,
+  });
+}
 
 /**
  * Resolve `-w/--workspace <name>` to a project workspace, matching by
@@ -464,25 +511,16 @@ async function installWithYarn(req: InstallRequest): Promise<InstallResult> {
   } catch {
     throw new InstallError("yarn engine unavailable: @yarnpkg/core is not installed");
   }
-  const { Configuration, Project, StreamReport, structUtils, Cache } = core;
-  const { npath } = await import("@yarnpkg/fslib");
+  const { Project, StreamReport, structUtils, Cache } = core;
   if (req.packages.length === 0) throw new InstallError("nothing to install");
 
-  const cwd = npath.toPortablePath(req.cwd);
-  const configuration = await Configuration.find(cwd, null);
-
-  // Registry resolution (semver ranges, tags) lives in plugin-npm.
-  // Linkers live in plugin-pnp / plugin-nm. Like the yarn CLI itself, we
-  // activate the full set up front: settings such as `nodeLinker` are
-  // contributed by these plugins, so reading config requires them active.
+  // Engine plugins (registry resolution in plugin-npm, linkers in
+  // plugin-pnp / plugin-nm) are registered inside loadYarnConfiguration.
   // The effective linker is then chosen by the project's own config.
-  const npmPlugin = (await import("@yarnpkg/plugin-npm")).default;
-  configuration.activatePlugin("@yarnpkg/plugin-npm", npmPlugin);
-  configuration.activatePlugin("@yarnpkg/plugin-nm", (await import("@yarnpkg/plugin-nm")).default);
-  configuration.activatePlugin(
-    "@yarnpkg/plugin-pnp",
-    (await import("@yarnpkg/plugin-pnp")).default,
-  );
+  const { configuration, portableCwd: cwd } = await loadYarnConfiguration(core, req.cwd);
+  // --registry wins over .yarnrc.yml (auth still comes from .yarnrc.yml /
+  // environment, which Configuration.find already loaded).
+  if (req.registry) applyYarnRegistryOverride(configuration, req.registry, cwd);
   const linker = configuration.get("nodeLinker");
 
   let findResult: Awaited<ReturnType<typeof Project.find>>;
@@ -519,7 +557,12 @@ async function installWithYarn(req: InstallRequest): Promise<InstallResult> {
       // the registry so typos fail here with a clear error, not mid-install.
       let version: string;
       try {
-        version = (await fetchNpmMeta(structUtils.stringifyIdent(descriptor))).version;
+        version = (
+          await fetchNpmMeta(structUtils.stringifyIdent(descriptor), {
+            cwd: req.cwd,
+            registry: req.registry,
+          })
+        ).version;
       } catch (err) {
         throw new InstallError(`cannot resolve "${spec}": ${errMsg(err)}`);
       }
@@ -608,11 +651,16 @@ async function installWithBinary(pm: string, req: InstallRequest): Promise<Insta
     throw new InstallError("cannot combine --dev with --peer or --optional");
   }
   const wsSuffix = req.workspace ? ` (workspace: ${req.workspace})` : "";
+  // --registry is native to the pnpm/bun CLIs; the yarn binary has no such
+  // flag (its project .yarnrc.yml owns the registry).
+  const registryArgs =
+    req.registry && (pm === "pnpm" || pm === "bun") ? ["--registry", req.registry] : [];
   const args = [
     ...(req.dev ? entry.dev : entry.normal),
     ...binarySaveFlags(pm, req),
     ...req.packages,
     ...binaryWorkspaceFlags(pm, req.workspace),
+    ...registryArgs,
     ...req.extraArgs,
   ];
   if (req.dryRun) {

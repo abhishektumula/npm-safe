@@ -3,9 +3,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  applyYarnRegistryOverride,
   binarySaveFlags,
   engineFor,
   InstallError,
+  loadYarnConfiguration,
   npmSaveTypeFor,
   performInstall,
   performPassthrough,
@@ -24,6 +26,7 @@ function req(overrides: Partial<InstallRequest> = {}): InstallRequest {
     peer: false,
     optional: false,
     workspace: null,
+    registry: null,
     extraArgs: [],
     dryRun: true,
     ...overrides,
@@ -241,6 +244,50 @@ describe("binary boundary (dry-run only, no spawn)", () => {
     expect(pnpm.message).toContain("pnpm add left-pad --filter api");
     const bun = await performInstall("bun", req({ workspace: "api" }));
     expect(bun.message).toContain("bun add left-pad --filter api");
+  });
+  test("registry is re-emitted for pnpm/bun, not yarn", async () => {
+    const pnpm = await performInstall("pnpm", req({ registry: "https://r.example.com" }));
+    expect(pnpm.message).toContain("pnpm add left-pad --registry https://r.example.com");
+    const bun = await performInstall("bun", req({ registry: "https://r.example.com" }));
+    expect(bun.message).toContain("bun add left-pad --registry https://r.example.com");
+    const yarn = await performInstall(
+      "yarn",
+      req({ packages: ["user/repo"], registry: "https://r.example.com" }),
+    );
+    expect(yarn.message).toContain("yarn add user/repo");
+    expect(yarn.message).not.toContain("--registry");
+  });
+});
+
+describe("applyYarnRegistryOverride", () => {
+  test("flag wins over .yarnrc.yml", async () => {
+    const core = await import("@yarnpkg/core");
+    const dir = mkdtempSync(join(tmpdir(), "npms-yarn-reg-"));
+    try {
+      writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "probe", version: "0.0.0" }));
+      writeFileSync(join(dir, ".yarnrc.yml"), "npmRegistryServer: https://rc.example.com\n");
+      const { configuration, portableCwd } = await loadYarnConfiguration(core, dir);
+      expect(configuration.get("npmRegistryServer")).toBe("https://rc.example.com");
+      applyYarnRegistryOverride(configuration, "https://flag.example.com", portableCwd);
+      expect(configuration.get("npmRegistryServer")).toBe("https://flag.example.com");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  test("plugin-provided rc settings no longer crash the load", async () => {
+    const core = await import("@yarnpkg/core");
+    const dir = mkdtempSync(join(tmpdir(), "npms-yarn-reg-"));
+    try {
+      writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "probe", version: "0.0.0" }));
+      writeFileSync(
+        join(dir, ".yarnrc.yml"),
+        "npmRegistryServer: https://rc.example.com\nnpmAuthToken: tok123\n",
+      );
+      const { configuration } = await loadYarnConfiguration(core, dir);
+      expect(configuration.get("npmRegistryServer")).toBe("https://rc.example.com");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

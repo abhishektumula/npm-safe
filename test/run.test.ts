@@ -225,6 +225,13 @@ describe("run", () => {
     expect(output()).toContain("not supported with brew");
     expect(process.exitCode).toBe(1);
   });
+  test("--registry reaches the binary plan and status line", async () => {
+    stubRegistry(["pkgr1"]);
+    await run(["add", "pkgr1", "--registry", "https://r.example.com", "--dry-run", "--pm", "bun"]);
+    expect(output()).toContain("--registry https://r.example.com");
+    expect(output()).toContain("(registry: https://r.example.com)");
+    expect(process.exitCode).toBe(0);
+  });
   test("mix of registry and non-registry specs", async () => {
     stubRegistry(["pkgr1"]);
     await run(["add", "pkgr1", "user/repo", "--dry-run", "--pm", "bun", "-y"]);

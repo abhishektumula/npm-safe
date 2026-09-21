@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { helpText, parseArgs, saveFlagsSuffix, workspaceSuffix } from "../src/cli.ts";
+import { helpText, parseArgs, registrySuffix, saveFlagsSuffix, workspaceSuffix } from "../src/cli.ts";
 import { stripAnsi } from "./helper.ts";
 
 describe("parseArgs routing", () => {
@@ -86,6 +86,29 @@ describe("parseArgs flags", () => {
   test("workspaceSuffix", () => {
     expect(workspaceSuffix({ workspace: null })).toBe("");
     expect(workspaceSuffix({ workspace: "api" })).toBe(" (workspace: api)");
+  });
+  test("registry flag forms", () => {
+    expect(parseArgs(["install", "a", "--registry", "https://r.example.com"]).opts.registry).toBe(
+      "https://r.example.com",
+    );
+    expect(parseArgs(["install", "a", "--registry=https://r.example.com"]).opts.registry).toBe(
+      "https://r.example.com",
+    );
+    expect(parseArgs(["install", "a"]).opts.registry).toBeNull();
+  });
+  test("registry value is not a package", () => {
+    const p = parseArgs(["install", "a", "--registry", "https://r.example.com"]);
+    expect(p.opts.packages).toEqual(["a"]);
+    expect(p.opts.extraArgs).not.toContain("--registry");
+  });
+  test("registrySuffix redacts embedded credentials", () => {
+    expect(registrySuffix({ registry: null })).toBe("");
+    expect(registrySuffix({ registry: "https://r.example.com" })).toBe(
+      " (registry: https://r.example.com)",
+    );
+    expect(registrySuffix({ registry: "https://user:pass@r.example.com" })).toBe(
+      " (registry: https://***@r.example.com)",
+    );
   });
   test("--pm space and equals forms", () => {
     expect(parseArgs(["install", "a", "--pm", "yarn"]).opts.pmOverride).toBe("yarn");

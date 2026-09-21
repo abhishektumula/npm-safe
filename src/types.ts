@@ -46,6 +46,8 @@ export interface CliOptions {
   optional: boolean;
   /** target workspace package (`-w/--workspace`); null = current project */
   workspace: string | null;
+  /** custom registry URL (`--registry`); null = .npmrc/env/default chain */
+  registry: string | null;
   dryRun: boolean;
   json: boolean;
   pmOverride: string | null;
@@ -60,6 +62,8 @@ export interface InstallRequest {
   optional: boolean;
   /** target workspace package; null = current project */
   workspace: string | null;
+  /** custom registry URL (`--registry`); null = .npmrc/env/default chain */
+  registry: string | null;
   /** extras the user passed; known ones are mapped to engine options */
   extraArgs: string[];
   dryRun: boolean;
