@@ -32,7 +32,7 @@ what rules are load-bearing, and exactly when to commit.
 | `index.ts`         | Binary entry (`process.argv` → `run()`, `node` shebang) | Entry/runtime support changes |
 | `src/cli.ts`       | Arg parsing, `install` vs `passthrough` routing, status output (thin orchestrator) | Flags, commands, UX flow |
 | `src/inspect.ts`   | `inspectOne()` + `inspectPackages()` orchestration over npm/snyk/deps | Intel pipeline changes |
-| `src/prompt.ts`    | `[y/N]` confirm via `node:readline` + pure `parseConfirmAnswer()` | Prompt UX |
+| `src/prompt.ts`    | Single-keypress `[y/N]` confirm (raw mode, readline fallback) + pure `parseConfirmAnswer()` | Prompt UX |
 | `src/install.ts`   | **Only file allowed to install/run packages.** Per-PM engines behind `performInstall` / `performPassthrough` | Any install or spawn behavior |
 | `src/pm.ts`        | Detecting which manager owns `cwd` (lockfiles → `packageManager` field → npm default) | Detection rules only |
 | `src/npm.ts`       | Registry metadata (`registry.npmjs.org/:pkg/latest`) | Intel fields, registry handling |
