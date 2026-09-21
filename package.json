@@ -1,5 +1,5 @@
 {
-  "name": "npm-safe",
+  "name": "@hort/nps",
   "version": "0.1.0",
   "description": "nps: see package intel (deps, health) before you install — an npm wrapper",
   "type": "module",
