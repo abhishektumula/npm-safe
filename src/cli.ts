@@ -197,7 +197,6 @@ export function helpText(): string {
     to their binaries (no programmatic API exists). Unknown flags are
     forwarded to binary installers; the engines map --save-exact/-E
     and report the rest as ignored.
-    (alias: npm-safe still works)
 `;
 }
 

@@ -2,14 +2,17 @@
 
 ## Bin layout
 
-`package.json` ships two binaries pointing at the same entry:
+`package.json` ships one binary, `npms`, pointing at the built bundle:
 
 ```json
-"bin": { "npms": "./index.ts", "npm-safe": "./index.ts" }
+"bin": { "npms": "./dist/index.js" }
 ```
 
-`npms` is the primary command; `npm-safe` is the backwards-compatible
-alias. Keep both until a major version explicitly retires the alias.
+The registry package is named `npm-safe`; the command is always `npms`.
+Bins point at `dist/`, never at `./index.ts`: TypeScript source runs
+under Bun from a checkout, but an installed package must run under plain
+Node, so it needs the built JS. `files: ["dist", "README.md"]` keeps the
+tarball to three files (`npm pack --dry-run` to confirm).
 
 ## Build
 
@@ -37,12 +40,22 @@ bun ./index.ts run --dry-run build   # no network, no spawn
 
 ```bash
 bun run check && bun run test    # gate: green, coverage ≥90%
-bun run build
-npm publish --access public      # package name: npm-safe
+npm pack --dry-run               # expect 3 files: dist/index.js, README.md, package.json
+npm publish --access public      # package name: npm-safe (runs prepublishOnly → build)
 ```
 
 `bun.lock` is committed, so installs are reproducible for contributors;
-the published tarball needs no lockfile.
+the published tarball needs no lockfile. Engine deps
+(`@npmcli/arborist`, `@yarnpkg/*`) install automatically as
+`dependencies`.
+
+## Local install (development only)
+
+`bun link` exposes the bins from your checkout — but they point at
+`dist/`, so **rebuild after every change** (`bun run build`), or the
+linked commands run stale code. A global command resolving to a path
+outside your checkout (`Module not found …/index.ts`) means a stale link
+from another clone: unlink it and re-link from the right directory.
 
 ## Release checklist
 
