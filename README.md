@@ -59,6 +59,7 @@ npm/yarn in-process engines (they are local-project only) — use
 | `-P, --peer`  | Install as peerDependency (`-P` means peer here)              |
 | `-O, --optional` | Install as optionalDependency (both = optional peer)       |
 | `-w, --workspace <name>` | Add to a workspace package (same target everywhere) |
+| `--registry <url>` | Use a private registry (`.npmrc` + `NPM_TOKEN` also work) |
 | `--pm <name>` | Force manager: `npm` \| `bun` \| `pnpm` \| `yarn` \| `brew`   |
 | `--dry-run`   | Show intel only, never install                                |
 | `--json`      | Machine-readable report instead of the color card             |
@@ -91,6 +92,21 @@ with `--pm`.
 
 `run`, `test`, `exec`, `remove`, … are CLI-only surface in every manager,
 so they always pass straight through.
+
+`--dev` is a no-op for `brew` (`brew install` has no dev concept). A low
+(<40), unreachable, or unparsable Snyk health score prints a warning
+before the prompt; it never blocks the install.
+
+Private registries work via `--registry`, `.npmrc` (`registry`,
+`@scope:registry`, `//host/:_authToken` with `${VAR}` interpolation), or
+the `NPM_TOKEN` env var — for both the intel screen and the install.
+
+## Privacy
+
+Inspecting a package sends its name to the configured registry
+(metadata) and `security.snyk.io` (health score). Nothing else leaves
+your machine — no telemetry, no accounts. Registry tokens are sent only
+to the registry host, and never printed (status lines redact them).
 
 ## Development
 

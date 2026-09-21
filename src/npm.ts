@@ -1,5 +1,6 @@
 import type { NpmMeta } from "./types.ts";
-import { encodePkg } from "./spec.ts";
+import { fetchWithRetry } from "./fetch.ts";
+import { encodePkg, isValidPkgName } from "./spec.ts";
 import { authHeaders, loadNpmrc, nerf, registryFor } from "./npmrc.ts";
 
 export interface FetchMetaOptions {
@@ -34,12 +35,16 @@ function cleanAuthor(raw: unknown): string {
 // `@scope:registry`, `//host/:_authToken` with ${VAR} interpolation),
 // or the NPM_TOKEN env var.
 export async function fetchNpmMeta(name: string, opts?: FetchMetaOptions): Promise<NpmMeta> {
+  if (!isValidPkgName(name)) {
+    throw new Error(`invalid package name "${name}": registry names only (no protocols or paths)`);
+  }
   const cfg = loadNpmrc(opts?.cwd ?? process.cwd());
   const registry = registryFor(name, cfg, opts?.registry);
-  const res = await fetch(`${registry}/${encodePkg(name)}/latest`, {
-    headers: { Accept: "application/json", ...authHeaders(registry, cfg) },
-    signal: AbortSignal.timeout(8000),
-  });
+  const res = await fetchWithRetry(
+    `${registry}/${encodePkg(name)}/latest`,
+    { headers: { Accept: "application/json", ...authHeaders(registry, cfg) } },
+    { timeoutMs: 8000 },
+  );
   if (res.status === 404) throw new Error(`package "${name}" not found (${nerf(registry)})`);
   if (res.status === 401 || res.status === 403) {
     throw new Error(

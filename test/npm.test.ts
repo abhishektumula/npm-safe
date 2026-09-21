@@ -101,4 +101,14 @@ describe("fetchNpmMeta", () => {
     expect(seen.url).toBe("https://registry.npmjs.org/x/latest");
     expect(seen.auth).toBe("Bearer tok123");
   });
+  test("non-registry names throw before any fetch", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      return { status: 200, ok: true, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    await expect(fetchNpmMeta("file:./local")).rejects.toThrow(/invalid package name/);
+    await expect(fetchNpmMeta("../escape")).rejects.toThrow(/invalid package name/);
+    expect(calls).toBe(0);
+  });
 });

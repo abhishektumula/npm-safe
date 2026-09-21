@@ -21,6 +21,7 @@ export async function inspectOne(query: string, opts?: FetchMetaOptions): Promis
       transitiveCount: 0,
       totalCount: 0,
       transitiveNames: [],
+      truncated: false,
       elapsedMs: Date.now() - t0,
       isNonRegistry: true,
     };
@@ -42,11 +43,12 @@ export async function inspectOne(query: string, opts?: FetchMetaOptions): Promis
       transitiveCount: 0,
       totalCount: 0,
       transitiveNames: [],
+      truncated: false,
       elapsedMs: Date.now() - t0,
     };
   }
   const meta = metaRes.value;
-  const { count, names } = await countTransitive(meta.directDeps, opts);
+  const { count, names, truncated } = await countTransitive(meta.directDeps, opts);
   return {
     query,
     meta,
@@ -56,6 +58,7 @@ export async function inspectOne(query: string, opts?: FetchMetaOptions): Promis
     transitiveCount: count,
     totalCount: meta.directDeps.length + count,
     transitiveNames: names,
+    truncated,
     elapsedMs: Date.now() - t0,
   };
 }

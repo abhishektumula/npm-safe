@@ -33,12 +33,17 @@ bun run check && bun test --coverage   # green + ≥90% or add tests
 
 1. **Fetch it** — new `src/<source>.ts` (one module per source) exporting an
    `async fetch…()` that never throws unhandled (return null/empty on
-   failure so one dead source can't kill the screen).
+   failure so one dead source can't kill the screen). Route HTTP through
+   `fetchWithRetry()` from `src/fetch.ts` (per-attempt timeout, one
+   429/503 retry honoring `Retry-After`) instead of raw `fetch()`.
 2. **Type it** — extend the interfaces in `src/types.ts`
    (`NpmMeta`, `Health`, or `PackageReport`).
 3. **Wire it** — call it in `inspectOne()` inside `src/inspect.ts`,
    in parallel with the existing fetches (`Promise.allSettled`).
 4. **Render it** — `src/render.ts` (full card; compact rows stay minimal).
+   Every string from the network is untrusted: pass it through
+   `sanitizeTerminal()` from `src/sanitize.ts` before painting, so a
+   hostile package can't inject terminal escape sequences.
 5. **Test it** — `test/<source>.test.ts` by stubbing `globalThis.fetch`
    (success mapping, 404, 500, throw). Never hit the network in tests.
 

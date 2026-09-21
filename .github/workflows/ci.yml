@@ -1,0 +1,18 @@
+# Contributor gates (AGENTS.md): typecheck, tests with the >=90% coverage
+# gate, and a dependency audit. Green CI means the set is safe to commit.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      - run: bun test --coverage
+      - run: bun audit

@@ -32,14 +32,17 @@ what rules are load-bearing, and exactly when to commit.
 | `index.ts`         | Binary entry (`process.argv` → `run()`, `node` shebang) | Entry/runtime support changes |
 | `src/cli.ts`       | Arg parsing, `install` vs `passthrough` routing, status output (thin orchestrator) | Flags, commands, UX flow |
 | `src/inspect.ts`   | `inspectOne()` + `inspectPackages()` orchestration over npm/snyk/deps | Intel pipeline changes |
-| `src/prompt.ts`    | `[y/N]` confirm via `node:readline` + pure `parseConfirmAnswer()` | Prompt UX |
+| `src/prompt.ts`    | Single-keypress `[y/N]` confirm (raw mode, readline fallback) + pure `parseConfirmAnswer()` | Prompt UX |
 | `src/install.ts`   | **Only file allowed to install/run packages.** Per-PM engines behind `performInstall` / `performPassthrough` | Any install or spawn behavior |
 | `src/pm.ts`        | Detecting which manager owns `cwd` (lockfiles → `packageManager` field → npm default) | Detection rules only |
-| `src/npm.ts`       | Registry metadata (`registry.npmjs.org/:pkg/latest`) | Intel fields, registry handling |
-| `src/snyk.ts`      | Snyk health scrape                                  | Health source/parsing changes                      |
-| `src/deps.ts`      | Transitive-dep BFS (`CONCURRENCY`, `MAX_NODES`)     | Counting strategy, limits                          |
-| `src/spec.ts`      | Spec parsing (`splitSpec`) + scope-safe encoding (`encodePkg`) + registry-vs-non-registry classification (`isRegistrySpec`) | Package-spec syntax |
-| `src/render.ts`    | Full card vs compact row, badges                    | Display layout                                     |
+| `src/npm.ts`       | Registry metadata (`/:pkg/latest`, private registries via `npmrc.ts`) | Intel fields, registry handling |
+| `src/npmrc.ts`     | `.npmrc` discovery + `--registry`/`NPM_TOKEN` resolution for intel + Arborist | Private-registry auth |
+| `src/fetch.ts`     | Shared `fetchWithRetry()` (per-attempt timeout, 429/503 backoff) | Intel transport, retry policy |
+| `src/snyk.ts`      | Snyk health scrape (flags unparsable pages)         | Health source/parsing changes                      |
+| `src/deps.ts`      | Transitive-dep BFS (`CONCURRENCY`, `MAX_NODES`, time/size budgets) | Counting strategy, limits                          |
+| `src/spec.ts`      | Spec parsing (`splitSpec`) + scope-safe encoding (`encodePkg`) + registry-vs-non-registry classification (`isRegistrySpec`) + name allowlist (`isValidPkgName`) | Package-spec syntax |
+| `src/render.ts`    | Full card vs compact row, badges (sanitizes via `sanitize.ts`) | Display layout                                     |
+| `src/sanitize.ts`  | `sanitizeTerminal()` — strips ESC/OSC/C0/C1/bidi from untrusted text | Terminal-injection hardening                       |
 | `src/colors.ts`    | Hand-rolled ANSI (color only, no bold/italic)       | Palette/bar changes                                |
 | `src/types.ts`     | Shared interfaces (`NpmMeta`, `Health`, `PackageReport`, `CliOptions`) | Cross-module contracts |
 | `src/arborist.d.ts`| Minimal ambient types for untyped `@npmcli/arborist` | Engine surface changes |
@@ -89,6 +92,13 @@ Data flow: `run()` → `parseArgs()` → per-package `inspectOne()`
   uniformly. Unknown user flags ride in `CliOptions.extraArgs`: binary
   installers forward them; engines map `--save-exact`/`-E` and report the
   rest ignored.
+- Private registries: `--registry` flag, `.npmrc` (`registry`,
+  `@scope:registry`, `//host/:_authToken` with `${VAR}`), `NPM_TOKEN` env.
+  All intel fetches go through `fetchWithRetry()`; Arborist gets flat
+  `//host/:_authToken` option keys (it never reads `.npmrc` itself).
+- Untrusted text (registry fields, snyk HTML, user queries) is sanitized
+  via `sanitizeTerminal()` before painting; spec names pass
+  `isValidPkgName()` before any fetch or engine call.
 
 ## 4. Product spec (preserved from the original brief)
 
@@ -103,7 +113,8 @@ command. 3+ packages (without `-a`) collapse to compact rows:
 `total(direct, transitive)`, no repo URL.
 Flags: `-a/--all` (dep names, transitive sample, license, health detail),
 `-y/--yes`, `-D/--dev`, `-P/--peer`, `-O/--optional`, `-w/--workspace`,
-`--pm`, `--dry-run`, `--json`, `-v`, `-h`.
+`--registry`, `--pm`, `--dry-run`, `--json`, `-v`, `-h`. Scores under 40
+or unavailable health warn first (advisory only).
 Keep latency minimal (parallel fetches, bounded BFS), output colorful
 (JetBrainsMono / GeistMono Nerd Font friendly), no UI beyond the terminal.
 

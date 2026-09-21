@@ -33,6 +33,8 @@ export interface PackageReport {
   transitiveCount: number;
   totalCount: number;
   transitiveNames: string[];
+  /** true when the transitive crawl hit its node or time budget */
+  truncated: boolean;
   elapsedMs: number;
   /** True for non-registry specs (GitHub shorthand, file:, link:, tarball URLs) */
   isNonRegistry?: boolean;

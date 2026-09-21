@@ -1,6 +1,56 @@
 import { describe, expect, test } from "bun:test";
-import { helpText, parseArgs, registrySuffix, saveFlagsSuffix, workspaceSuffix } from "../src/cli.ts";
+import {
+  helpText,
+  LOW_HEALTH_THRESHOLD,
+  parseArgs,
+  registrySuffix,
+  saveFlagsSuffix,
+  warnOnLowHealth,
+  workspaceSuffix,
+} from "../src/cli.ts";
 import { stripAnsi } from "./helper.ts";
+
+describe("warnOnLowHealth", () => {
+  const logs: string[] = [];
+  const realLog = console.log;
+  function report(overrides = {}) {
+    return {
+      query: "pkg",
+      meta: null,
+      metaError: null,
+      health: { score: 80, breakdown: null },
+      directCount: 0,
+      transitiveCount: 0,
+      totalCount: 0,
+      transitiveNames: [],
+      truncated: false,
+      elapsedMs: 1,
+      ...overrides,
+    };
+  }
+  test("warns on low scores and unknown health, skips unparsed", () => {
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+    try {
+      warnOnLowHealth([
+        report({ query: "low", health: { score: LOW_HEALTH_THRESHOLD - 1, breakdown: null } }),
+        report({ query: "mystery", health: { score: null, breakdown: null } }),
+        report({ query: "noparse", health: { score: null, breakdown: null, unparsed: true } }),
+        report({ query: "fine", health: { score: 90, breakdown: null } }),
+      ]);
+      const out = stripAnsi(logs.join("\n"));
+      expect(out).toContain("low health score");
+      expect(out).toContain("low");
+      expect(out).toContain("mystery");
+      expect(out).not.toContain("noparse");
+      expect(out).not.toContain("fine");
+    } finally {
+      console.log = realLog;
+      logs.length = 0;
+    }
+  });
+});
 
 describe("parseArgs routing", () => {
   test("explicit install verbs", () => {

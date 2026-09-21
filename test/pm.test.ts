@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { detectPm } from "../src/pm.ts";
+import { detectPm, isSupportedPm, PmError, type Pm } from "../src/pm.ts";
 
 let prevCwd = "";
 
@@ -45,7 +45,7 @@ describe("detectPm", () => {
     expect(detectPm(null).pm).toBe("bun");
   });
   test("each lockfile maps correctly", () => {
-    const cases: Array<[string, string]> = [
+    const cases: Array<[string, Pm]> = [
       ["pnpm-lock.yaml", "pnpm"],
       ["yarn.lock", "yarn"],
       ["package-lock.json", "npm"],
@@ -72,5 +72,15 @@ describe("detectPm", () => {
   test("empty dir defaults to npm", () => {
     chdirTmp();
     expect(detectPm(null)).toEqual({ pm: "npm", via: "default" });
+  });
+  test("unsupported --pm override throws with the allowlist", () => {
+    expect(() => detectPm("wat")).toThrow(PmError);
+    expect(() => detectPm("wat")).toThrow(/supported: bun, pnpm, npm, yarn, brew/);
+  });
+  test("override is case-insensitive; brew is flag-only", () => {
+    expect(detectPm("Bun")).toEqual({ pm: "bun", via: "flag --pm" });
+    expect(detectPm("brew")).toEqual({ pm: "brew", via: "flag --pm" });
+    expect(isSupportedPm("brew")).toBe(true);
+    expect(isSupportedPm("sh")).toBe(false);
   });
 });

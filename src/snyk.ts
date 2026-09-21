@@ -1,5 +1,9 @@
 import type { Health } from "./types.ts";
-import { encodePkg } from "./spec.ts";
+import { fetchWithRetry } from "./fetch.ts";
+import { encodePkg, isValidPkgName } from "./spec.ts";
+
+/** Scraped HTML is only scanned for small markers: never buffer more. */
+export const MAX_HTML_BYTES = 1_000_000;
 
 // Scrapes https://security.snyk.io/package/npm/:pkg (no API key needed).
 // Markers observed in the wild:
@@ -7,17 +11,27 @@ import { encodePkg } from "./spec.ts";
 //   <span class="criterion-label">security</span> ... <!--[-->No known security issues<!--]-->
 export async function fetchHealth(name: string): Promise<Health> {
   const empty: Health = { score: null, breakdown: null };
+  if (!isValidPkgName(name)) return empty;
   let html: string;
   try {
-    const res = await fetch(`https://security.snyk.io/package/npm/${encodePkg(name)}`, {
-      headers: {
-        "User-Agent": "npms/0.1.0",
-        Accept: "text/html",
+    const res = await fetchWithRetry(
+      `https://security.snyk.io/package/npm/${encodePkg(name)}`,
+      {
+        headers: {
+          "User-Agent": "npms/0.1.0",
+          Accept: "text/html",
+        },
       },
-      signal: AbortSignal.timeout(10000),
-    });
+      { timeoutMs: 10000 },
+    );
     if (!res.ok) return empty;
+    // Unbounded pages (proxy errors, markup changes) would blow up memory
+    // and the regexes below: bail out early on a large declared size…
+    const declared = Number(res.headers?.get?.("content-length") ?? 0);
+    if (Number.isFinite(declared) && declared > MAX_HTML_BYTES) return empty;
     html = await res.text();
+    // …and enforce the same cap on the actual body (missing/lying header).
+    if (html.length > MAX_HTML_BYTES) return empty;
   } catch {
     return empty;
   }
@@ -40,12 +54,16 @@ export async function fetchHealth(name: string): Promise<Health> {
 }
 
 function pick(html: string, label: string): string {
-  // <span ...criterion-label...>security</span> ... <!--[-->VALUE<!--]-->
-  const re = new RegExp(
-    `criterion-label[^>]*>\\s*${label}\\s*</span>\\s*<span[^>]*>(?:<!--[\\s\\S]*?-->\\s*)*(?:<svg[\\s\\S]*?</svg>\\s*)?(?:<!--[\\s\\S]*?-->\\s*)*([^<\\]]+)`,
-    "i",
-  );
-  const m = html.match(re);
-  const val = m?.[1]?.trim().replace(/<!--|-->/g, "").trim();
-  return val || "n/a";
+  const labelRe = new RegExp(`criterion-label[^>]*>\\s*${label}\\s*<\\/span>`, "i");
+  const match = html.match(labelRe);
+  if (!match || match.index === undefined) return "n/a";
+  const afterLabel = html.slice(match.index + match[0].length, match.index + match[0].length + 1000);
+  const spanMatch = afterLabel.match(/<span[^>]*>([\s\S]*?)<\/span>/i);
+  if (!spanMatch || !spanMatch[1]) return "n/a";
+  const content = spanMatch[1]
+    .replace(/<svg[\s\S]*?<\/svg>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<[^>]+>/g, "")
+    .trim();
+  return content || "n/a";
 }
