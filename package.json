@@ -8,7 +8,8 @@
   },
   "scripts": {
     "start": "bun ./index.ts",
-    "check": "bunx tsc --noEmit"
+    "check": "bunx tsc --noEmit",
+    "test": "bun test --coverage"
   },
   "devDependencies": {
     "@types/bun": "latest",

@@ -111,12 +111,17 @@ export function parseArgs(argv: string[]): Parsed {
   let help = false;
   let version = false;
   const positionals: string[] = [];
+  // Original-order args minus npms-consumed flags: passthrough must forward
+  // verbatim (`run dev --port 3000`, not `run dev 3000 --port`).
+  const kept: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "--") {
       // Everything after -- is forwarded verbatim.
-      opts.extraArgs.push(...argv.slice(i + 1));
+      const rest = argv.slice(i + 1);
+      opts.extraArgs.push(...rest);
+      kept.push(...rest);
       break;
     } else if (a === "-a" || a === "--all") opts.showAll = true;
     else if (a === "-y" || a === "--yes") opts.yes = true;
@@ -127,8 +132,13 @@ export function parseArgs(argv: string[]): Parsed {
     else if (a === "-v" || a === "--version") version = true;
     else if (a === "--pm") opts.pmOverride = argv[++i] ?? null;
     else if (a.startsWith("--pm=")) opts.pmOverride = a.slice(5);
-    else if (a.startsWith("-")) opts.extraArgs.push(a);
-    else positionals.push(a);
+    else if (a.startsWith("-")) {
+      opts.extraArgs.push(a);
+      kept.push(a);
+    } else {
+      positionals.push(a);
+      kept.push(a);
+    }
   }
 
   const first = positionals[0];
@@ -136,7 +146,7 @@ export function parseArgs(argv: string[]): Parsed {
     return {
       cmd: "passthrough",
       subcommand: first,
-      passthroughArgs: [...positionals.slice(1), ...opts.extraArgs],
+      passthroughArgs: kept.slice(1),
       opts,
       help,
       version,
