@@ -44,3 +44,18 @@ export interface CliOptions {
   json: boolean;
   pmOverride: string | null;
 }
+
+export interface InstallRequest {
+  cwd: string;
+  /** original user queries, e.g. ["express@5", "@scope/pkg"] */
+  packages: string[];
+  dev: boolean;
+  /** extras the user passed; known ones are mapped to engine options */
+  extraArgs: string[];
+  dryRun: boolean;
+}
+
+export interface InstallResult {
+  ok: boolean;
+  message: string;
+}

@@ -1,13 +1,10 @@
-import { createInterface } from "node:readline";
 import { c, paint } from "./colors.ts";
-import { fetchNpmMeta } from "./npm.ts";
-import { fetchHealth } from "./snyk.ts";
-import { countTransitive } from "./deps.ts";
+import { inspectPackages } from "./inspect.ts";
+import { confirm } from "./prompt.ts";
 import { detectPm } from "./pm.ts";
 import { engineFor, performInstall, performPassthrough, InstallError } from "./install.ts";
 import { render } from "./render.ts";
-import { splitSpec } from "./spec.ts";
-import type { CliOptions, PackageReport } from "./types.ts";
+import type { CliOptions } from "./types.ts";
 
 const VERSION = "0.1.0";
 
@@ -194,55 +191,6 @@ export function helpText(): string {
 `;
 }
 
-async function inspectOne(query: string): Promise<PackageReport> {
-  const t0 = Date.now();
-  const { name } = splitSpec(query);
-  const lookup = name || query;
-  const [metaRes, health] = await Promise.allSettled([fetchNpmMeta(lookup), fetchHealth(lookup)]);
-  if (metaRes.status === "rejected") {
-    return {
-      query,
-      meta: null,
-      metaError: metaRes.reason instanceof Error ? metaRes.reason.message : "fetch failed",
-      health: health.status === "fulfilled" ? health.value : { score: null, breakdown: null },
-      directCount: 0,
-      transitiveCount: 0,
-      totalCount: 0,
-      transitiveNames: [],
-      elapsedMs: Date.now() - t0,
-    };
-  }
-  const meta = metaRes.value;
-  const { count, names } = await countTransitive(meta.directDeps);
-  return {
-    query,
-    meta,
-    metaError: null,
-    health: health.status === "fulfilled" ? health.value : { score: null, breakdown: null },
-    directCount: meta.directDeps.length,
-    transitiveCount: count,
-    totalCount: meta.directDeps.length + count,
-    transitiveNames: names,
-    elapsedMs: Date.now() - t0,
-  };
-}
-
-// node:readline — works in Node and Bun. Bun's `for await (console)`
-// iterator does not exist in Node, so we never touch Bun.* APIs.
-async function confirm(): Promise<boolean> {
-  if (!process.stdin.isTTY) return false;
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  try {
-    const answer = await new Promise<string>((resolve) => {
-      rl.question(paint(c.yellow, "\n  install these packages? [y/N] "), resolve);
-    });
-    const a = answer.trim().toLowerCase();
-    return a === "y" || a === "yes";
-  } finally {
-    rl.close();
-  }
-}
-
 export async function run(argv: string[]): Promise<void> {
   const { cmd, subcommand, passthroughArgs, opts, help, version } = parseArgs(argv);
   if (version) {
@@ -278,7 +226,7 @@ export async function run(argv: string[]): Promise<void> {
   }
 
   process.stdout.write(paint(c.dim, `  ◌ fetching intel for ${opts.packages.join(", ")} …\n`));
-  const reports = await Promise.all(opts.packages.map(inspectOne));
+  const reports = await inspectPackages(opts.packages);
 
   if (opts.json) {
     console.log(JSON.stringify(reports, null, 2));

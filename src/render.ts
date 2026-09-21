@@ -16,9 +16,12 @@ function badge(text: string): string {
   return paint(c.dim, text);
 }
 
-// Full card: 1-2 packages. Compact row: 3+ packages per spec.
+// 3+ packages collapse to compact rows (per product spec); -a opts back out.
+export const COMPACT_THRESHOLD = 3;
+
+// Full card: below threshold. Compact row: at/above threshold per spec.
 export function render(reports: PackageReport[], showAll: boolean): string {
-  const compact = reports.length > 2 && !showAll;
+  const compact = reports.length >= COMPACT_THRESHOLD && !showAll;
   const out: string[] = [];
   out.push("");
   out.push(paint(c.pink, "  ◆ npms") + paint(c.dim, "  package intel before you install"));
