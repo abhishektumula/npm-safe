@@ -5,6 +5,7 @@ import { detectPm, PmError } from "./pm.ts";
 import { engineFor, performInstall, performPassthrough, InstallError } from "./install.ts";
 import { render } from "./render.ts";
 import { sanitizeTerminal } from "./sanitize.ts";
+import { startSpinner } from "./spinner.ts";
 import type { CliOptions, PackageReport } from "./types.ts";
 
 const VERSION = "0.1.0";
@@ -387,12 +388,14 @@ export async function run(argv: string[]): Promise<void> {
       console.log(paint(c.dim, "  ◌ aborted. nothing installed."));
       return;
     }
-    console.log(paint(c.cyan, `\n  ▶ installing project dependencies via ${engineFor(pm)}\n`));
+    // Orb spinner while the engine works — Arborist is silent, so the old
+    // static `▶` line felt frozen on slow installs.
+    const spinner = startSpinner(`installing project dependencies via ${engineFor(pm)}`);
     try {
       const res = await performInstall(pm, req);
-      console.log(paint(c.green, `  ✔ ${res.message}`));
+      spinner.succeed(res.message);
     } catch (err) {
-      console.error(paint(c.red, `  ✖ ${err instanceof InstallError ? err.message : String(err)}`));
+      spinner.fail(err instanceof InstallError ? err.message : String(err));
       process.exitCode = 1;
     }
     return;
@@ -403,11 +406,25 @@ export async function run(argv: string[]): Promise<void> {
     return;
   }
 
-  process.stdout.write(paint(c.dim, `  ◌ fetching intel for ${opts.packages.join(", ")} …\n`));
-  const reports = await inspectPackages(opts.packages, {
-    cwd: process.cwd(),
-    registry: opts.registry,
-  });
+  // Animated orb while registry + snyk + dep crawl run — the old static
+  // line felt frozen on slow networks. --json stays silent (machine-readable).
+  let reports: PackageReport[];
+  if (opts.json) {
+    reports = await inspectPackages(opts.packages, {
+      cwd: process.cwd(),
+      registry: opts.registry,
+    });
+  } else {
+    const spinner = startSpinner(`fetching intel for ${opts.packages.join(", ")}`);
+    try {
+      reports = await inspectPackages(opts.packages, {
+        cwd: process.cwd(),
+        registry: opts.registry,
+      });
+    } finally {
+      spinner.stop();
+    }
+  }
 
   if (opts.json) {
     console.log(JSON.stringify(reports, null, 2));
@@ -469,12 +486,14 @@ export async function run(argv: string[]): Promise<void> {
     console.log(paint(c.dim, "  ◌ aborted. nothing installed."));
     return;
   }
-  console.log(paint(c.cyan, `\n  ▶ installing ${installable.join(", ")} via ${engineFor(pm)}\n`));
+  // Orb spinner while the engine works — same frozen-static-line problem as
+  // the intel wait above. Succeed/fail lines carry the engine's message.
+  const spinner = startSpinner(`installing ${installable.join(", ")} via ${engineFor(pm)}`);
   try {
     const res = await performInstall(pm, req);
-    console.log(paint(c.green, `  ✔ ${res.message}`));
+    spinner.succeed(res.message);
   } catch (err) {
-    console.error(paint(c.red, `  ✖ ${err instanceof InstallError ? err.message : String(err)}`));
+    spinner.fail(err instanceof InstallError ? err.message : String(err));
     process.exitCode = 1;
   }
 }

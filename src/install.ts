@@ -20,7 +20,7 @@
 //
 // Nothing outside this file spawns a package manager.
 
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { readFileSync, readdirSync, type Dirent } from "node:fs";
 import { join } from "node:path";
 import { fetchNpmMeta } from "./npm.ts";
@@ -349,7 +349,7 @@ async function projectInstallWithBinary(pm: string, req: InstallRequest): Promis
   if (req.dryRun) {
     return { ok: true, message: `dry-run: would run \`${pm} ${args.join(" ")}\` — nothing executed` };
   }
-  const code = spawnPm(pm, args, req.cwd);
+  const code = await spawnPm(pm, args, req.cwd);
   if (code !== 0) throw new InstallError(`${pm} exited with code ${code}`);
   return { ok: true, message: `installed project dependencies via ${pm}${wsSuffix}` };
 }
@@ -666,7 +666,7 @@ async function installWithBinary(pm: string, req: InstallRequest): Promise<Insta
   if (req.dryRun) {
     return { ok: true, message: `dry-run: would run \`${pm} ${args.join(" ")}\` — nothing executed` };
   }
-  const code = spawnPm(pm, args, req.cwd);
+  const code = await spawnPm(pm, args, req.cwd);
   if (code !== 0) throw new InstallError(`${pm} exited with code ${code}`);
   return { ok: true, message: `installed ${req.packages.join(", ")} via ${pm}${wsSuffix}` };
 }
@@ -691,12 +691,25 @@ export async function performPassthrough(
   return spawnPm(pm, args, cwd);
 }
 
-function spawnPm(pm: string, args: string[], cwd: string): number {
-  const res = spawnSync(pm, args, { stdio: "inherit", cwd });
-  if (res.error) {
-    // ENOENT means "binary missing" or "cwd missing" interchangeably —
-    // include both so the cause is diagnosable instead of a bare code.
-    throw new InstallError(`failed to start \`${pm}\` (cwd: ${cwd}): ${errMsg(res.error)}`);
-  }
-  return res.status ?? 1;
+function spawnPm(pm: string, args: string[], cwd: string): Promise<number> {
+  // Async spawn (not spawnSync): the event loop must keep turning so the
+  // orb spinner in cli.ts animates while the child runs. stdio stays
+  // inherited, so the child's own progress still paints as before.
+  return new Promise((resolve, reject) => {
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(pm, args, { stdio: "inherit", cwd });
+    } catch (err) {
+      reject(new InstallError(`failed to start \`${pm}\` (cwd: ${cwd}): ${errMsg(err)}`));
+      return;
+    }
+    child.on("error", (err) => {
+      // ENOENT means "binary missing" or "cwd missing" interchangeably —
+      // include both so the cause is diagnosable instead of a bare code.
+      reject(new InstallError(`failed to start \`${pm}\` (cwd: ${cwd}): ${errMsg(err)}`));
+    });
+    child.on("close", (code) => {
+      resolve(code ?? 1);
+    });
+  });
 }
