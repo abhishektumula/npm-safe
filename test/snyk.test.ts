@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { fetchHealth } from "../src/snyk.ts";
+import { fetchHealth, MAX_HTML_BYTES } from "../src/snyk.ts";
 
 const realFetch = globalThis.fetch;
 
@@ -48,5 +48,23 @@ describe("fetchHealth", () => {
   test("page without markers yields nulls", async () => {
     stubHtml("<html><body>changed layout</body></html>");
     expect(await fetchHealth("x")).toEqual({ score: null, breakdown: null });
+  });
+  test("oversized body yields empty health without parsing", async () => {
+    stubHtml(`<span class="score-number">90/100</span>`.padEnd(MAX_HTML_BYTES + 1, "x"));
+    expect(await fetchHealth("x")).toEqual({ score: null, breakdown: null });
+  });
+  test("large declared content-length short-circuits to empty", async () => {
+    let textCalled = false;
+    globalThis.fetch = (async () => ({
+      status: 200,
+      ok: true,
+      headers: { get: (name: string) => (name === "content-length" ? String(MAX_HTML_BYTES + 1) : null) },
+      text: async () => {
+        textCalled = true;
+        return "should never be read";
+      },
+    })) as unknown as typeof fetch;
+    expect(await fetchHealth("x")).toEqual({ score: null, breakdown: null });
+    expect(textCalled).toBe(false);
   });
 });

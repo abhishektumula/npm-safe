@@ -1,7 +1,7 @@
 import { c, paint } from "./colors.ts";
 import { inspectPackages } from "./inspect.ts";
 import { confirm } from "./prompt.ts";
-import { detectPm } from "./pm.ts";
+import { detectPm, PmError } from "./pm.ts";
 import { engineFor, performInstall, performPassthrough, InstallError } from "./install.ts";
 import { render } from "./render.ts";
 import type { CliOptions } from "./types.ts";
@@ -207,7 +207,15 @@ export async function run(argv: string[]): Promise<void> {
     return;
   }
 
-  const { pm, via } = detectPm(opts.pmOverride);
+  let pm: string;
+  let via: string;
+  try {
+    ({ pm, via } = detectPm(opts.pmOverride));
+  } catch (err) {
+    console.error(paint(c.red, `  ✖ ${err instanceof PmError ? err.message : String(err)}`));
+    process.exitCode = 1;
+    return;
+  }
 
   if (cmd === "passthrough") {
     if (help) {

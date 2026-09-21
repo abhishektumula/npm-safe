@@ -35,6 +35,9 @@ export function splitSpec(query: string): PkgSpec {
 export function encodePkg(name: string): string {
   return name
     .split("/")
-    .map((seg) => encodeURIComponent(seg).replace(/^%40/, "@"))
+    .map((seg) => {
+      if (seg === ".." || seg === ".") return encodeURIComponent(seg).replace(/\./g, "%2E");
+      return encodeURIComponent(seg).replace(/^%40/, "@");
+    })
     .join("/");
 }

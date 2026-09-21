@@ -56,6 +56,23 @@ describe("render full card", () => {
     );
     expect(text).toContain("n/a");
   });
+  test("registry control sequences never reach the terminal", () => {
+    const r = report();
+    r.meta = {
+      ...r.meta!,
+      description: "innocent\x1b[2J\x1b[1Afake prompt",
+      author: "mallory\x1b]52;c;c3RlYWw=\x07",
+      repoUrl: "https://example.com/\u202erepo",
+    };
+    const raw = render([r], false);
+    expect(raw).not.toContain("\x1b[2J");
+    expect(raw).not.toContain("\x1b[1A");
+    expect(raw).not.toContain("\x1b]52");
+    expect(raw).not.toContain(" ");
+    expect(raw).not.toContain("‑repo");
+    expect(stripAnsi(raw)).toContain("https://example.com/repo");
+    expect(stripAnsi(raw)).toContain("innocentfake prompt");
+  });
   test("unrecognized badge text renders dim", () => {
     const r = report();
     r.health.breakdown = {

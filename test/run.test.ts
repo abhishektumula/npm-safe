@@ -111,8 +111,14 @@ describe("run", () => {
   });
   test("aborts without -y off a TTY", async () => {
     stubRegistry();
-    await run(["add", "pkgr1", "--pm", "bun"]);
-    expect(output()).toContain("aborted");
+    const origTTY = process.stdin.isTTY;
+    Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
+    try {
+      await run(["add", "pkgr1", "--pm", "bun"]);
+      expect(output()).toContain("aborted");
+    } finally {
+      Object.defineProperty(process.stdin, "isTTY", { value: origTTY, configurable: true });
+    }
   });
   test("passthrough help prints help", async () => {
     await run(["run", "--help"]);

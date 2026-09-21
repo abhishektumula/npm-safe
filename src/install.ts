@@ -260,5 +260,10 @@ export async function performPassthrough(
 
 function spawnPm(pm: string, args: string[], cwd: string): number {
   const res = spawnSync(pm, args, { stdio: "inherit", cwd });
+  if (res.error) {
+    // ENOENT means "binary missing" or "cwd missing" interchangeably —
+    // include both so the cause is diagnosable instead of a bare code.
+    throw new InstallError(`failed to start \`${pm}\` (cwd: ${cwd}): ${errMsg(res.error)}`);
+  }
   return res.status ?? 1;
 }

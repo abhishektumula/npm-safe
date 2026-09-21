@@ -13,7 +13,7 @@
         "@yarnpkg/plugin-pnp": "^4.2.1",
       },
       "devDependencies": {
-        "@types/bun": "latest",
+        "@types/bun": "^1.4.2",
         "typescript": "^7.0.2",
       },
     },

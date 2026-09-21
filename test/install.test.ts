@@ -80,6 +80,11 @@ describe("performPassthrough", () => {
   test("real spawn works (harmless --version probe)", async () => {
     await expect(performPassthrough("bun", ["--version"], process.cwd(), false)).resolves.toBe(0);
   });
+  test("spawn start failure surfaces cause and cwd", async () => {
+    await expect(
+      performPassthrough("bun", ["--version"], "/nonexistent-npms-probe-dir", false),
+    ).rejects.toThrow(/failed to start `bun`.*\/nonexistent-npms-probe-dir/);
+  });
   test("binary install executes harmless version probes", async () => {
     const res = await performInstall("bun", req({ packages: ["--version"], dryRun: false }));
     expect(res.ok).toBe(true);

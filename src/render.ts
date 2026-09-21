@@ -1,4 +1,5 @@
 import { c, paint, healthBar, healthColor } from "./colors.ts";
+import { sanitizeTerminal } from "./sanitize.ts";
 import type { PackageReport } from "./types.ts";
 
 const rule = paint(c.dim, "─".repeat(52));
@@ -35,15 +36,19 @@ export function render(reports: PackageReport[], showAll: boolean): string {
 
 function fullCard(r: PackageReport, showAll: boolean): string {
   const L: string[] = [];
+  // Every interpolated string below is registry- or scraper-sourced and
+  // therefore untrusted: sanitize before painting (paint adds our own
+  // codes after, so styling survives while injected sequences do not).
+  const t = sanitizeTerminal;
   if (!r.meta) {
-    L.push(paint(c.red, `  ✖ ${r.query}`) + paint(c.dim, `  — ${r.metaError ?? "fetch failed"}`));
+    L.push(paint(c.red, `  ✖ ${t(r.query)}`) + paint(c.dim, `  — ${t(r.metaError ?? "fetch failed")}`));
     return L.join("\n");
   }
   const m = r.meta;
-  L.push(`  ${paint(c.cyan, "◆")} ${paint(c.white, m.name)} ${paint(c.dim, "v" + m.version)}`);
-  if (m.description) L.push(`  ${paint(c.dim, m.description)}`);
-  L.push(`  ${paint(c.violet, "author ")} ${paint(c.white, m.author)}`);
-  L.push(`  ${paint(c.violet, "repo   ")} ${paint(c.teal, m.repoUrl)}`);
+  L.push(`  ${paint(c.cyan, "◆")} ${paint(c.white, t(m.name))} ${paint(c.dim, "v" + t(m.version))}`);
+  if (m.description) L.push(`  ${paint(c.dim, t(m.description))}`);
+  L.push(`  ${paint(c.violet, "author ")} ${paint(c.white, t(m.author))}`);
+  L.push(`  ${paint(c.violet, "repo   ")} ${paint(c.teal, t(m.repoUrl))}`);
   L.push(
     `  ${paint(c.violet, "deps   ")} ${paint(c.lime, String(r.directCount))}${paint(c.dim, " direct")}  ` +
       `${paint(c.lime, String(r.transitiveCount))}${paint(c.dim, " transitive")}  ` +
@@ -53,22 +58,24 @@ function fullCard(r: PackageReport, showAll: boolean): string {
   if (r.health.breakdown) {
     const b = r.health.breakdown;
     L.push(
-      `           ${paint(c.dim, "security")} ${badge(b.security)}  ` +
-        `${paint(c.dim, "popularity")} ${badge(b.popularity)}`,
+      `           ${paint(c.dim, "security")} ${badge(t(b.security))}  ` +
+        `${paint(c.dim, "popularity")} ${badge(t(b.popularity))}`,
     );
     L.push(
-      `           ${paint(c.dim, "maintenance")} ${badge(b.maintenance)}  ` +
-        `${paint(c.dim, "community")} ${badge(b.community)}`,
+      `           ${paint(c.dim, "maintenance")} ${badge(t(b.maintenance))}  ` +
+        `${paint(c.dim, "community")} ${badge(t(b.community))}`,
     );
   }
   if (showAll) {
-    L.push(`  ${paint(c.violet, "license")} ${m.license}`);
+    L.push(`  ${paint(c.violet, "license")} ${t(m.license)}`);
     L.push(
       `  ${paint(c.violet, "direct ")} ` +
-        (m.directDeps.length ? paint(c.teal, m.directDeps.join(", ")) : paint(c.dim, "none")),
+        (m.directDeps.length
+          ? paint(c.teal, m.directDeps.map(t).join(", "))
+          : paint(c.dim, "none")),
     );
     if (r.transitiveNames.length) {
-      const shown = r.transitiveNames.slice(0, 30).join(", ");
+      const shown = r.transitiveNames.map(t).slice(0, 30).join(", ");
       const rest = r.transitiveNames.length > 30 ? ` +${r.transitiveNames.length - 30} more` : "";
       L.push(`  ${paint(c.violet, "trans  ")} ${paint(c.dim, shown + rest)}`);
     }
@@ -78,11 +85,15 @@ function fullCard(r: PackageReport, showAll: boolean): string {
 }
 
 function compactRow(r: PackageReport): string {
-  if (!r.meta) return paint(c.red, `  ✖ ${r.query}`) + paint(c.dim, ` — ${r.metaError ?? "fetch failed"}`);
+  if (!r.meta)
+    return (
+      paint(c.red, `  ✖ ${sanitizeTerminal(r.query)}`) +
+      paint(c.dim, ` — ${sanitizeTerminal(r.metaError ?? "fetch failed")}`)
+    );
   const depBits = `${r.totalCount}(${r.directCount}d, ${r.transitiveCount}t)`;
   const score = r.health.score === null ? paint(c.dim, "n/a") : paint(healthColor(r.health.score), `${r.health.score}/100`);
   return (
-    `  ${paint(c.cyan, "◆")} ${paint(c.white, r.meta.name)} ${paint(c.dim, "v" + r.meta.version)}  ` +
+    `  ${paint(c.cyan, "◆")} ${paint(c.white, sanitizeTerminal(r.meta.name))} ${paint(c.dim, "v" + sanitizeTerminal(r.meta.version))}  ` +
     `${paint(c.lime, depBits)}  ${paint(c.dim, "health")} ${score}`
   );
 }

@@ -41,4 +41,9 @@ describe("encodePkg", () => {
     expect(encodePkg("a b")).toBe("a%20b");
     expect(encodePkg("@scope/a+b")).toBe("@scope/a%2Bb");
   });
+  test("prevents path traversal via dot segments", () => {
+    expect(encodePkg("..")).toBe("%2E%2E");
+    expect(encodePkg(".")).toBe("%2E");
+    expect(encodePkg("../../foo")).toBe("%2E%2E/%2E%2E/foo");
+  });
 });

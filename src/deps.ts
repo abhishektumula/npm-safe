@@ -7,6 +7,7 @@ const MAX_NODES = 1200;
 // Version ranges are ignored (latest resolved) — a speed/accuracy trade-off:
 // exact semver resolution would need the full packument per node.
 // Shared cache keeps multi-package installs fast (express+lodash share deps).
+const MAX_CACHE_SIZE = 2000;
 const metaCache = new Map<string, string[]>();
 
 async function directOf(name: string): Promise<string[]> {
@@ -14,9 +15,11 @@ async function directOf(name: string): Promise<string[]> {
   if (hit) return hit;
   try {
     const meta = await fetchNpmMeta(name);
+    if (metaCache.size >= MAX_CACHE_SIZE) metaCache.clear();
     metaCache.set(name, meta.directDeps);
     return meta.directDeps;
   } catch {
+    if (metaCache.size >= MAX_CACHE_SIZE) metaCache.clear();
     metaCache.set(name, []);
     return [];
   }

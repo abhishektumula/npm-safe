@@ -10,9 +10,12 @@ export function parseConfirmAnswer(line: string): boolean {
   return a === "y" || a === "yes";
 }
 
-export async function confirm(): Promise<boolean> {
-  if (!process.stdin.isTTY) return false;
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
+export async function confirm(
+  input: NodeJS.ReadableStream & { isTTY?: boolean } = process.stdin,
+  output: NodeJS.WritableStream = process.stdout,
+): Promise<boolean> {
+  if (!input.isTTY) return false;
+  const rl = createInterface({ input, output });
   try {
     const answer = await new Promise<string>((resolve) => {
       rl.question(paint(c.yellow, "\n  install these packages? [y/N] "), resolve);

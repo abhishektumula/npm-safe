@@ -39,7 +39,8 @@ what rules are load-bearing, and exactly when to commit.
 | `src/snyk.ts`      | Snyk health scrape                                  | Health source/parsing changes                      |
 | `src/deps.ts`      | Transitive-dep BFS (`CONCURRENCY`, `MAX_NODES`)     | Counting strategy, limits                          |
 | `src/spec.ts`      | Spec parsing (`splitSpec`) + scope-safe encoding (`encodePkg`) | Package-spec syntax |
-| `src/render.ts`    | Full card vs compact row, badges                    | Display layout                                     |
+| `src/render.ts`    | Full card vs compact row, badges (sanitizes via `sanitize.ts`) | Display layout                                     |
+| `src/sanitize.ts`  | `sanitizeTerminal()` — strips ESC/OSC/C0/C1/bidi from untrusted text | Terminal-injection hardening                       |
 | `src/colors.ts`    | Hand-rolled ANSI (color only, no bold/italic)       | Palette/bar changes                                |
 | `src/types.ts`     | Shared interfaces (`NpmMeta`, `Health`, `PackageReport`, `CliOptions`) | Cross-module contracts |
 | `src/arborist.d.ts`| Minimal ambient types for untyped `@npmcli/arborist` | Engine surface changes |
