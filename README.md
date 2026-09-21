@@ -39,6 +39,7 @@ npms install                       # no packages: install project deps
 npms i "express@5" --dry-run       # inspect only, install nothing
 npms express lodash -y             # bare packages also mean install
 npms add user/repo file:../lib    # non-registry specs skip intel + warn
+npms add left-pad -w api           # same workspace target on every manager
 npms run dev / test / exec …       # passthrough to your package manager
 npms uninstall foo                 # passthrough, no intel screen
 npms add left-pad --json           # machine-readable report
@@ -57,6 +58,7 @@ npm/yarn in-process engines (they are local-project only) — use
 | `-D, --dev`   | Install as devDependency                                      |
 | `-P, --peer`  | Install as peerDependency (`-P` means peer here)              |
 | `-O, --optional` | Install as optionalDependency (both = optional peer)       |
+| `-w, --workspace <name>` | Add to a workspace package (same target everywhere) |
 | `--pm <name>` | Force manager: `npm` \| `bun` \| `pnpm` \| `yarn` \| `brew`   |
 | `--dry-run`   | Show intel only, never install                                |
 | `--json`      | Machine-readable report instead of the color card             |
@@ -68,6 +70,11 @@ the npm/yarn engines map `--save-exact`/`-E` plus the `-D`/`-P`/`-O` save
 flags and report the rest ignored. Note: npms `-P` always means *peer* —
 pnpm-native `-P` means `--save-prod`, so npms re-emits `--save-peer` for
 pnpm. `-D` can't be combined with `-P`/`-O` on any manager.
+
+`-w`/`--workspace <name>` targets one workspace package on every manager:
+the npm engine filters via Arborist, the yarn engine writes the named
+manifest, and `pnpm`/`bun` get `--filter <name>`. `--filter` itself stays
+binary-only and is rejected on the npm/yarn engines (use `-w`).
 
 ## Package managers
 

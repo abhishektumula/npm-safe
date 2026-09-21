@@ -38,7 +38,7 @@ what rules are load-bearing, and exactly when to commit.
 | `src/npm.ts`       | Registry metadata (`registry.npmjs.org/:pkg/latest`) | Intel fields, registry handling |
 | `src/snyk.ts`      | Snyk health scrape                                  | Health source/parsing changes                      |
 | `src/deps.ts`      | Transitive-dep BFS (`CONCURRENCY`, `MAX_NODES`)     | Counting strategy, limits                          |
-| `src/spec.ts`      | Spec parsing (`splitSpec`) + scope-safe encoding (`encodePkg`) | Package-spec syntax |
+| `src/spec.ts`      | Spec parsing (`splitSpec`) + scope-safe encoding (`encodePkg`) + registry-vs-non-registry classification (`isRegistrySpec`) | Package-spec syntax |
 | `src/render.ts`    | Full card vs compact row, badges                    | Display layout                                     |
 | `src/colors.ts`    | Hand-rolled ANSI (color only, no bold/italic)       | Palette/bar changes                                |
 | `src/types.ts`     | Shared interfaces (`NpmMeta`, `Health`, `PackageReport`, `CliOptions`) | Cross-module contracts |
@@ -68,8 +68,27 @@ Data flow: `run()` → `parseArgs()` → per-package `inspectOne()`
   shape) — the CLI must also run under Node ≥18.
 - Bare specs (`left-pad`) default to the latest caret range (`^x.y.z`,
   exact on `--save-exact`/`-E`) so typos fail at resolve time, not mid-install.
-- Unknown user flags ride in `CliOptions.extraArgs`: binary installers
-  forward them; engines map `--save-exact`/`-E` and report the rest ignored.
+- Non-registry specs (`user/repo`, `file:`, `link:`, tarball URLs, including
+  `pkg@file:…` forms) skip intel with a warning and install straight
+  through. The yarn engine can't express them as descriptors, so those fall
+  back to the `yarn` binary.
+- Bare `npms install` (no packages) performs a project install like the
+  manager does — npm/yarn in-process, pnpm/bun/brew via `<pm> install`.
+- `-w`/`--workspace <name>` (also `-w` attached form) targets one workspace
+  package on every manager: npm filters via Arborist `workspaces`
+  (validated against `package.json`, never a silent no-op), yarn writes the
+  named manifest (name or dir), pnpm/bun get `--filter <name>`.
+- `-g`/`--global` is rejected on the npm/yarn engines (local-project only);
+  `--filter`/`-F` is rejected there too (use `-w`). Both are install-flow
+  guards only — passthrough already spawns the real binary.
+- Save flags are canonical wrapper vocabulary: `-D` (dev), `-P`/`--peer`
+  (peer — pnpm-native `-P` means prod, so never forward `-P` raw), `-O`
+  (optional). Engines map them (`Arborist` saveType incl. `peerOptional`;
+  yarn manifest tables + meta); binaries get PM-native re-emissions
+  (`--save-peer`, `--peer`, `--optional`). `-D` with `-P`/`-O` fails
+  uniformly. Unknown user flags ride in `CliOptions.extraArgs`: binary
+  installers forward them; engines map `--save-exact`/`-E` and report the
+  rest ignored.
 
 ## 4. Product spec (preserved from the original brief)
 
@@ -78,10 +97,13 @@ direct / transitive / total dep counts, health score `/100` with bar plus
 `security` / `popularity` / `maintenance` / `community` breakdown.
 Intel: `registry.npmjs.org` for metadata, `security.snyk.io` (scraped) for health.
 Flow: `npms install <pkgs>` → intel cards → `[y/N]` → install with the
-detected manager. Multiple packages in one command. 3+ packages (without
-`-a`) collapse to compact rows: `total(direct, transitive)`, no repo URL.
+detected manager. Bare `npms install` installs project deps (no intel).
+Non-registry specs skip intel with a warning. Multiple packages in one
+command. 3+ packages (without `-a`) collapse to compact rows:
+`total(direct, transitive)`, no repo URL.
 Flags: `-a/--all` (dep names, transitive sample, license, health detail),
-`-y/--yes`, `-D/--dev`, `--pm`, `--dry-run`, `--json`, `-v`, `-h`.
+`-y/--yes`, `-D/--dev`, `-P/--peer`, `-O/--optional`, `-w/--workspace`,
+`--pm`, `--dry-run`, `--json`, `-v`, `-h`.
 Keep latency minimal (parallel fetches, bounded BFS), output colorful
 (JetBrainsMono / GeistMono Nerd Font friendly), no UI beyond the terminal.
 
