@@ -1,15 +1,17 @@
 {
   "name": "npm-safe",
   "version": "0.1.0",
-  "description": "See npm package intel (deps, health) before you install",
+  "description": "npms: see package intel (deps, health) before you install — an npm wrapper",
   "type": "module",
   "bin": {
+    "npms": "./index.ts",
     "npm-safe": "./index.ts"
   },
   "scripts": {
     "start": "bun ./index.ts",
     "check": "bunx tsc --noEmit",
-    "test": "bun test --coverage"
+    "test": "bun test --coverage",
+    "build": "bun build ./index.ts --outdir ./dist --target node"
   },
   "devDependencies": {
     "@types/bun": "latest",
