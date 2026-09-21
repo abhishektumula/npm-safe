@@ -3,6 +3,9 @@ import { join } from "node:path";
 
 export type Pm = "bun" | "pnpm" | "npm" | "yarn";
 
+/** Every manager npms can route to. `brew` is opt-in only (--pm brew). */
+export const ALL_PMS = ["bun", "pnpm", "npm", "yarn", "brew"] as const;
+
 // NOTE: installs no longer shell out with per-PM argv (see install.ts —
 // npm/yarn run in-process via their official engines). This module only
 // detects which manager owns the current directory.

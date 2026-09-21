@@ -16,21 +16,8 @@
 
 import { spawnSync } from "node:child_process";
 import { fetchNpmMeta } from "./npm.ts";
-
-export interface InstallRequest {
-  cwd: string;
-  /** original user queries, e.g. ["express@5", "@scope/pkg"] */
-  packages: string[];
-  dev: boolean;
-  /** extras the user passed; known ones are mapped to engine options */
-  extraArgs: string[];
-  dryRun: boolean;
-}
-
-export interface InstallResult {
-  ok: boolean;
-  message: string;
-}
+import { ALL_PMS } from "./pm.ts";
+import type { InstallRequest, InstallResult } from "./types.ts";
 
 export class InstallError extends Error {
   constructor(message: string) {
@@ -41,6 +28,17 @@ export class InstallError extends Error {
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Split extras into the exact-pin flag (mapped to engine options) and the
+ * rest (forwarded to binary installers, reported as ignored by engines).
+ */
+export function splitExactFlag(extraArgs: string[]): { exact: boolean; ignored: string[] } {
+  return {
+    exact: extraArgs.includes("--save-exact") || extraArgs.includes("-E"),
+    ignored: extraArgs.filter((a) => a !== "--save-exact" && a !== "-E"),
+  };
 }
 
 /** Human-readable engine label for status lines. */
@@ -91,8 +89,7 @@ async function installWithNpm(req: InstallRequest): Promise<InstallResult> {
   }
   if (req.packages.length === 0) throw new InstallError("nothing to install");
 
-  const exact = req.extraArgs.includes("--save-exact") || req.extraArgs.includes("-E");
-  const ignored = req.extraArgs.filter((a) => a !== "--save-exact" && a !== "-E");
+  const { exact, ignored } = splitExactFlag(req.extraArgs);
   const saveType = req.dev ? "dev" : "prod";
 
   // savePrefix "" pins the exact version (npm's --save-exact); "^" is npm's default.
@@ -155,8 +152,7 @@ async function installWithYarn(req: InstallRequest): Promise<InstallResult> {
   if (!workspace) throw new InstallError(`no yarn workspace found under ${req.cwd}`);
 
   // Mirror npm semantics: caret default, exact pin on --save-exact/-E.
-  const exact = req.extraArgs.includes("--save-exact") || req.extraArgs.includes("-E");
-  const ignored = req.extraArgs.filter((a) => a !== "--save-exact" && a !== "-E");
+  const { exact, ignored } = splitExactFlag(req.extraArgs);
 
   const targets: Array<ReturnType<typeof structUtils.makeDescriptor>> = [];
   for (const spec of req.packages) {
@@ -246,7 +242,7 @@ export async function performPassthrough(
   cwd: string,
   dryRun: boolean,
 ): Promise<number> {
-  if (!["bun", "pnpm", "npm", "yarn", "brew"].includes(pm)) {
+  if (!(ALL_PMS as readonly string[]).includes(pm)) {
     throw new InstallError(`unsupported package manager: ${pm}`);
   }
   if (dryRun) {
