@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { helpText, parseArgs } from "../src/cli.ts";
+import { helpText, parseArgs, saveFlagsSuffix } from "../src/cli.ts";
 import { stripAnsi } from "./helper.ts";
 
 describe("parseArgs routing", () => {
@@ -46,9 +46,28 @@ describe("parseArgs flags", () => {
     });
   });
   test("dev flag aliases", () => {
-    for (const f of ["-D", "--dev", "--save-dev"]) {
+    for (const f of ["-D", "-d", "--dev", "--save-dev"]) {
       expect(parseArgs(["install", "a", f]).opts.dev).toBe(true);
     }
+  });
+  test("peer flag aliases", () => {
+    for (const f of ["-P", "--peer", "--save-peer"]) {
+      const p = parseArgs(["install", "a", f]);
+      expect(p.opts.peer).toBe(true);
+      expect(p.opts.extraArgs).not.toContain(f);
+    }
+  });
+  test("optional flag aliases", () => {
+    for (const f of ["-O", "-o", "--optional", "--save-optional"]) {
+      const p = parseArgs(["install", "a", f]);
+      expect(p.opts.optional).toBe(true);
+      expect(p.opts.extraArgs).not.toContain(f);
+    }
+  });
+  test("saveFlagsSuffix combines set flags", () => {
+    expect(saveFlagsSuffix({ dev: false, peer: false, optional: false })).toBe("");
+    expect(saveFlagsSuffix({ dev: true, peer: false, optional: false })).toBe(" --dev");
+    expect(saveFlagsSuffix({ dev: false, peer: true, optional: true })).toBe(" --peer --optional");
   });
   test("--pm space and equals forms", () => {
     expect(parseArgs(["install", "a", "--pm", "yarn"]).opts.pmOverride).toBe("yarn");

@@ -3,11 +3,14 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  binarySaveFlags,
   engineFor,
   InstallError,
+  npmSaveTypeFor,
   performInstall,
   performPassthrough,
   splitExactFlag,
+  yarnTargetFor,
 } from "../src/install.ts";
 import type { InstallRequest } from "../src/types.ts";
 
@@ -16,6 +19,8 @@ function req(overrides: Partial<InstallRequest> = {}): InstallRequest {
     cwd: process.cwd(),
     packages: ["left-pad"],
     dev: false,
+    peer: false,
+    optional: false,
     extraArgs: [],
     dryRun: true,
     ...overrides,
@@ -27,6 +32,66 @@ describe("splitExactFlag", () => {
     expect(splitExactFlag(["--save-exact", "--foo"])).toEqual({ exact: true, ignored: ["--foo"] });
     expect(splitExactFlag(["-E"])).toEqual({ exact: true, ignored: [] });
     expect(splitExactFlag([])).toEqual({ exact: false, ignored: [] });
+  });
+});
+
+describe("npmSaveTypeFor", () => {
+  test("maps each flag to the Arborist saveType", () => {
+    expect(npmSaveTypeFor({ dev: false, peer: false, optional: false })).toBe("prod");
+    expect(npmSaveTypeFor({ dev: true, peer: false, optional: false })).toBe("dev");
+    expect(npmSaveTypeFor({ dev: false, peer: true, optional: false })).toBe("peer");
+    expect(npmSaveTypeFor({ dev: false, peer: false, optional: true })).toBe("optional");
+    expect(npmSaveTypeFor({ dev: false, peer: true, optional: true })).toBe("peerOptional");
+  });
+  test("dev with peer/optional throws", () => {
+    expect(() => npmSaveTypeFor({ dev: true, peer: true, optional: false })).toThrow(InstallError);
+    expect(() => npmSaveTypeFor({ dev: true, peer: false, optional: true })).toThrow(InstallError);
+  });
+});
+
+describe("yarnTargetFor", () => {
+  test("maps each flag to the manifest table", () => {
+    expect(yarnTargetFor({ dev: false, peer: false, optional: false })).toEqual({
+      table: "dependencies",
+      optionalMeta: null,
+    });
+    expect(yarnTargetFor({ dev: true, peer: false, optional: false })).toEqual({
+      table: "devDependencies",
+      optionalMeta: null,
+    });
+    expect(yarnTargetFor({ dev: false, peer: true, optional: false })).toEqual({
+      table: "peerDependencies",
+      optionalMeta: null,
+    });
+    expect(yarnTargetFor({ dev: false, peer: false, optional: true })).toEqual({
+      table: "dependencies",
+      optionalMeta: "regular",
+    });
+    expect(yarnTargetFor({ dev: false, peer: true, optional: true })).toEqual({
+      table: "peerDependencies",
+      optionalMeta: "peer",
+    });
+  });
+  test("dev with peer/optional throws", () => {
+    expect(() => yarnTargetFor({ dev: true, peer: true, optional: false })).toThrow(InstallError);
+  });
+});
+
+describe("binarySaveFlags", () => {
+  test("re-emits PM-native long forms (never pnpm's -P)", () => {
+    expect(binarySaveFlags("pnpm", { dev: false, peer: true, optional: true })).toEqual([
+      "--save-peer",
+      "--save-optional",
+    ]);
+    expect(binarySaveFlags("bun", { dev: false, peer: true, optional: true })).toEqual([
+      "--peer",
+      "--optional",
+    ]);
+    expect(binarySaveFlags("yarn", { dev: false, peer: true, optional: false })).toEqual([
+      "--peer",
+    ]);
+    expect(binarySaveFlags("brew", { dev: false, peer: true, optional: true })).toEqual([]);
+    expect(binarySaveFlags("pnpm", { dev: true, peer: false, optional: false })).toEqual([]);
   });
 });
 
@@ -72,6 +137,19 @@ describe("binary boundary (dry-run only, no spawn)", () => {
   test("dev + extras shape the command", async () => {
     const res = await performInstall("pnpm", req({ dev: true, extraArgs: ["--foo"] }));
     expect(res.message).toContain("pnpm add --save-dev left-pad --foo");
+  });
+  test("peer/optional re-emit PM-native flags", async () => {
+    const pnpm = await performInstall("pnpm", req({ peer: true, optional: true }));
+    expect(pnpm.message).toContain("pnpm add --save-peer --save-optional left-pad");
+    const bun = await performInstall("bun", req({ peer: true }));
+    expect(bun.message).toContain("bun add --peer left-pad");
+    const yarn = await performInstall("yarn", req({ packages: ["user/repo"], optional: true }));
+    expect(yarn.message).toContain("yarn add --optional user/repo");
+  });
+  test("dev with peer/optional throws on binaries too", async () => {
+    await expect(performInstall("pnpm", req({ dev: true, peer: true }))).rejects.toThrow(
+      /cannot combine/,
+    );
   });
 });
 
@@ -119,6 +197,39 @@ describe("yarn engine dry-runs (no network: ranged specs only)", () => {
     try {
       const res = await performInstall("yarn", req({ cwd: dir, packages: ["a@^1"], dev: true }));
       expect(res.message).toContain("devDependencies");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  test("peer flag targets peerDependencies", async () => {
+    const dir = yarnDir(true);
+    try {
+      const res = await performInstall("yarn", req({ cwd: dir, packages: ["a@^1"], peer: true }));
+      expect(res.message).toContain("peerDependencies");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  test("optional flag targets optionalDependencies", async () => {
+    const dir = yarnDir(true);
+    try {
+      const res = await performInstall(
+        "yarn",
+        req({ cwd: dir, packages: ["a@^1"], optional: true }),
+      );
+      expect(res.message).toContain("optionalDependencies");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  test("peer + optional targets optional peer", async () => {
+    const dir = yarnDir(true);
+    try {
+      const res = await performInstall(
+        "yarn",
+        req({ cwd: dir, packages: ["a@^1"], peer: true, optional: true }),
+      );
+      expect(res.message).toContain("peerDependencies (optional)");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

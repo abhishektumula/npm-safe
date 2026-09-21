@@ -42,6 +42,8 @@ export interface CliOptions {
   showAll: boolean;
   yes: boolean;
   dev: boolean;
+  peer: boolean;
+  optional: boolean;
   dryRun: boolean;
   json: boolean;
   pmOverride: string | null;
@@ -52,6 +54,8 @@ export interface InstallRequest {
   /** original user queries, e.g. ["express@5", "@scope/pkg"] */
   packages: string[];
   dev: boolean;
+  peer: boolean;
+  optional: boolean;
   /** extras the user passed; known ones are mapped to engine options */
   extraArgs: string[];
   dryRun: boolean;

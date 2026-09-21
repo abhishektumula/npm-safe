@@ -45,6 +45,65 @@ export function splitExactFlag(extraArgs: string[]): { exact: boolean; ignored: 
   };
 }
 
+export type NpmSaveType = "prod" | "dev" | "optional" | "peer" | "peerOptional";
+
+/**
+ * Map the wrapper save flags to Arborist's saveType vocabulary (see the
+ * @npmcli/arborist README: prod | optional | dev | peer | peerOptional).
+ * --dev with --peer/--optional is rejected at the CLI; this guards direct
+ * API use the same way.
+ */
+export function npmSaveTypeFor(o: { dev: boolean; peer: boolean; optional: boolean }): NpmSaveType {
+  if (o.dev && (o.peer || o.optional)) {
+    throw new InstallError("cannot combine --dev with --peer or --optional");
+  }
+  if (o.peer && o.optional) return "peerOptional";
+  if (o.peer) return "peer";
+  if (o.optional) return "optional";
+  return o.dev ? "dev" : "prod";
+}
+
+export interface YarnSaveTarget {
+  table: "dependencies" | "devDependencies" | "peerDependencies";
+  /** ident-level meta to stamp: regular optional dep vs optional peer */
+  optionalMeta: "regular" | "peer" | null;
+}
+
+/**
+ * Map the wrapper save flags to the yarn manifest table (+ meta), mirroring
+ * `yarn add`: -P writes peerDependencies, -O marks optionalDependencies
+ * (regular) or peerDependenciesMeta.optional (with -P). --dev with
+ * --peer/--optional is rejected like the yarn CLI rejects it.
+ */
+export function yarnTargetFor(o: { dev: boolean; peer: boolean; optional: boolean }): YarnSaveTarget {
+  if (o.dev && (o.peer || o.optional)) {
+    throw new InstallError("cannot combine --dev with --peer or --optional");
+  }
+  if (o.peer) return { table: "peerDependencies", optionalMeta: o.optional ? "peer" : null };
+  if (o.optional) return { table: "dependencies", optionalMeta: "regular" };
+  return { table: o.dev ? "devDependencies" : "dependencies", optionalMeta: null };
+}
+
+/**
+ * PM-native save flags appended for binary installers (which never see the
+ * wrapper's canonical -D/-P/-O tokens — pnpm's -P means --save-prod, so the
+ * long forms are re-emitted to avoid cross-PM misreads).
+ */
+export function binarySaveFlags(
+  pm: string,
+  o: { dev: boolean; peer: boolean; optional: boolean },
+): string[] {
+  const flags: string[] = [];
+  if (pm === "pnpm") {
+    if (o.peer) flags.push("--save-peer");
+    if (o.optional) flags.push("--save-optional");
+  } else if (pm === "bun" || pm === "yarn") {
+    if (o.peer) flags.push("--peer");
+    if (o.optional) flags.push("--optional");
+  }
+  return flags;
+}
+
 /** Human-readable engine label for status lines. */
 export function engineFor(pm: string): string {
   switch (pm) {
@@ -232,7 +291,7 @@ async function installWithNpm(req: InstallRequest): Promise<InstallResult> {
   if (req.packages.length === 0) throw new InstallError("nothing to install");
 
   const { exact, ignored } = splitExactFlag(req.extraArgs);
-  const saveType = req.dev ? "dev" : "prod";
+  const saveType = npmSaveTypeFor(req);
 
   // savePrefix "" pins the exact version (npm's --save-exact); "^" is npm's default.
   const arb = new Arborist({ path: req.cwd, save: true, saveType, savePrefix: exact ? "" : "^" });
@@ -308,6 +367,7 @@ async function installWithYarn(req: InstallRequest): Promise<InstallResult> {
 
   // Mirror npm semantics: caret default, exact pin on --save-exact/-E.
   const { exact, ignored } = splitExactFlag(req.extraArgs);
+  const target = yarnTargetFor(req);
 
   const targets: Array<ReturnType<typeof structUtils.makeDescriptor>> = [];
   for (const spec of req.packages) {
@@ -335,7 +395,12 @@ async function installWithYarn(req: InstallRequest): Promise<InstallResult> {
   }
 
   if (req.dryRun) {
-    const where = req.dev ? "devDependencies" : "dependencies";
+    const where =
+      target.table === "peerDependencies" && target.optionalMeta === "peer"
+        ? "peerDependencies (optional)"
+        : target.table === "dependencies" && target.optionalMeta === "regular"
+          ? "optionalDependencies"
+          : target.table;
     return {
       ok: true,
       message: `dry-run: would add ${targets.map((d) => structUtils.stringifyDescriptor(d)).join(", ")} to ${where} (linker: ${linker}) — nothing written`,
@@ -344,9 +409,21 @@ async function installWithYarn(req: InstallRequest): Promise<InstallResult> {
 
   // Mirror `yarn add`: write the descriptors into the nearest workspace
   // manifest, persist package.json, then run the project install.
+  // -O on a regular dep lands in optionalDependencies via ident-level
+  // dependenciesMeta (how the Manifest round-trips the field); -P -O lands
+  // in peerDependencies + peerDependenciesMeta.optional.
   const manifest = workspace.manifest;
-  const table = req.dev ? manifest.devDependencies : manifest.dependencies;
-  for (const descriptor of targets) table.set(descriptor.identHash, descriptor);
+  const table = manifest[target.table];
+  for (const descriptor of targets) {
+    table.set(descriptor.identHash, descriptor);
+    if (target.optionalMeta === "regular") {
+      const identDescriptor = structUtils.makeDescriptor(descriptor, "unknown");
+      Object.assign(manifest.ensureDependencyMeta(identDescriptor), { optional: true });
+    } else if (target.optionalMeta === "peer") {
+      const identDescriptor = structUtils.makeDescriptor(descriptor, "unknown");
+      Object.assign(manifest.ensurePeerDependencyMeta(identDescriptor), { optional: true });
+    }
+  }
   await workspace.persistManifest();
 
   const report = await StreamReport.start(
@@ -380,7 +457,15 @@ const BINARY_INSTALL_ARGS: Record<string, { normal: string[]; dev: string[] }> =
 async function installWithBinary(pm: string, req: InstallRequest): Promise<InstallResult> {
   const entry = BINARY_INSTALL_ARGS[pm];
   if (!entry) throw new InstallError(`unsupported package manager: ${pm}`);
-  const args = [...(req.dev ? entry.dev : entry.normal), ...req.packages, ...req.extraArgs];
+  if (req.dev && (req.peer || req.optional)) {
+    throw new InstallError("cannot combine --dev with --peer or --optional");
+  }
+  const args = [
+    ...(req.dev ? entry.dev : entry.normal),
+    ...binarySaveFlags(pm, req),
+    ...req.packages,
+    ...req.extraArgs,
+  ];
   if (req.dryRun) {
     return { ok: true, message: `dry-run: would run \`${pm} ${args.join(" ")}\` — nothing executed` };
   }

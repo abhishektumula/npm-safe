@@ -55,6 +55,8 @@ npm/yarn in-process engines (they are local-project only) — use
 | `-a, --all`   | Full detail: dep names, transitive sample, license, breakdown |
 | `-y, --yes`   | Skip the `[y/N]` prompt                                       |
 | `-D, --dev`   | Install as devDependency                                      |
+| `-P, --peer`  | Install as peerDependency (`-P` means peer here)              |
+| `-O, --optional` | Install as optionalDependency (both = optional peer)       |
 | `--pm <name>` | Force manager: `npm` \| `bun` \| `pnpm` \| `yarn` \| `brew`   |
 | `--dry-run`   | Show intel only, never install                                |
 | `--json`      | Machine-readable report instead of the color card             |
@@ -62,7 +64,10 @@ npm/yarn in-process engines (they are local-project only) — use
 | `-h, --help`  | Help                                                          |
 
 Unknown flags are forwarded to binary installers (`pnpm`/`bun`/`brew`);
-the npm/yarn engines map `--save-exact`/`-E` and report the rest ignored.
+the npm/yarn engines map `--save-exact`/`-E` plus the `-D`/`-P`/`-O` save
+flags and report the rest ignored. Note: npms `-P` always means *peer* —
+pnpm-native `-P` means `--save-prod`, so npms re-emits `--save-peer` for
+pnpm. `-D` can't be combined with `-P`/`-O` on any manager.
 
 ## Package managers
 

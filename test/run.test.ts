@@ -189,6 +189,24 @@ describe("run", () => {
     expect(output()).toContain("file:../local");
     expect(process.exitCode).toBe(0);
   });
+  test("-P maps to the PM-native peer flag", async () => {
+    stubRegistry(["pkgr1"]);
+    await run(["add", "pkgr1", "-P", "--dry-run", "--pm", "pnpm"]);
+    expect(output()).toContain("--save-peer");
+    expect(output()).not.toContain(" -P");
+    expect(process.exitCode).toBe(0);
+  });
+  test("-O maps to the PM-native optional flag", async () => {
+    stubRegistry(["pkgr1"]);
+    await run(["add", "pkgr1", "-O", "--dry-run", "--pm", "bun"]);
+    expect(output()).toContain("--optional");
+    expect(process.exitCode).toBe(0);
+  });
+  test("-D with -P errors uniformly", async () => {
+    await run(["add", "pkgr1", "-D", "-P", "--dry-run", "--pm", "bun"]);
+    expect(output()).toContain("cannot combine");
+    expect(process.exitCode).toBe(1);
+  });
   test("mix of registry and non-registry specs", async () => {
     stubRegistry(["pkgr1"]);
     await run(["add", "pkgr1", "user/repo", "--dry-run", "--pm", "bun", "-y"]);

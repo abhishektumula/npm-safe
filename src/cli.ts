@@ -104,6 +104,8 @@ export function parseArgs(argv: string[]): Parsed {
     showAll: false,
     yes: false,
     dev: false,
+    peer: false,
+    optional: false,
     dryRun: false,
     json: false,
     pmOverride: null,
@@ -125,7 +127,10 @@ export function parseArgs(argv: string[]): Parsed {
       break;
     } else if (a === "-a" || a === "--all") opts.showAll = true;
     else if (a === "-y" || a === "--yes") opts.yes = true;
-    else if (a === "-D" || a === "--dev" || a === "--save-dev") opts.dev = true;
+    else if (a === "-D" || a === "-d" || a === "--dev" || a === "--save-dev") opts.dev = true;
+    else if (a === "-P" || a === "--peer" || a === "--save-peer") opts.peer = true;
+    else if (a === "-O" || a === "-o" || a === "--optional" || a === "--save-optional")
+      opts.optional = true;
     else if (a === "--dry-run") opts.dryRun = true;
     else if (a === "--json") opts.json = true;
     else if (a === "-h" || a === "--help") help = true;
@@ -166,6 +171,11 @@ export function parseArgs(argv: string[]): Parsed {
   };
 }
 
+/** `--dev` / `--peer` / `--optional` suffix for installer status lines. */
+export function saveFlagsSuffix(o: { dev: boolean; peer: boolean; optional: boolean }): string {
+  return `${o.dev ? " --dev" : ""}${o.peer ? " --peer" : ""}${o.optional ? " --optional" : ""}`;
+}
+
 export function helpText(): string {
   return `
   ${paint(c.pink, "◆ npms")} ${paint(c.dim, `v${VERSION} — npm wrapper with safety intel before you install`)}
@@ -185,6 +195,8 @@ export function helpText(): string {
     -a, --all        full detail: direct dep names, transitive sample, license, snyk breakdown
     -y, --yes        skip the [y/N] prompt and install immediately
     -D, --dev        install as devDependency (--save-dev / --dev per PM)
+    -P, --peer       install as peerDependency (-P means peer here, not pnpm's -P/prod)
+    -O, --optional   install as optionalDependency (both = optional peer)
     --pm <name>      force package manager: npm | bun | pnpm | yarn | brew
     --dry-run        show intel only, never install
     --json           machine-readable report instead of the color card
@@ -202,8 +214,9 @@ export function helpText(): string {
     to their binaries (no programmatic API exists). -g/--global is rejected
     for the npm/yarn engines (local-project only) — use a binary manager
     or run the global install directly. Unknown flags are forwarded to
-    binary installers; the engines map --save-exact/-E and report the
-    rest as ignored.
+    binary installers; the engines map --save-exact/-E plus the -D/-P/-O
+    save flags (--peer/-P means peer here: pnpm-native -P is re-emitted
+    as --save-peer) and report the rest as ignored.
 `;
 }
 
@@ -254,17 +267,31 @@ export async function run(argv: string[]): Promise<void> {
     return;
   }
 
+  // --dev can't share a dependency field with --peer/--optional anywhere
+  // (yarn rejects it outright; Arborist takes a single saveType), so fail
+  // here uniformly instead of per-engine divergence.
+  if (opts.dev && (opts.peer || opts.optional)) {
+    console.error(paint(c.red, "  ✖ cannot combine -D/--dev with -P/--peer or -O/--optional."));
+    console.error(paint(c.dim, "  Pick one dependency field per add."));
+    process.exitCode = 1;
+    return;
+  }
+
   // Bare npms install (no packages) -> project install (like npm install)
   if (opts.packages.length === 0) {
     if (help) {
       console.log(helpText());
       return;
     }
-    console.log(paint(c.dim, `  ◈ installer: ${pm} via ${engineFor(pm)} (detected: ${via})${opts.dev ? " --dev" : ""}`));
+    console.log(
+      paint(c.dim, `  ◈ installer: ${pm} via ${engineFor(pm)} (detected: ${via})${saveFlagsSuffix(opts)}`),
+    );
     const req = {
       cwd: process.cwd(),
       packages: [],
       dev: opts.dev,
+      peer: opts.peer,
+      optional: opts.optional,
       extraArgs: opts.extraArgs,
       dryRun: opts.dryRun,
     };
@@ -307,7 +334,7 @@ export async function run(argv: string[]): Promise<void> {
   }
 
   console.log(
-    paint(c.dim, `  ◈ installer: ${pm} via ${engineFor(pm)} (detected: ${via})${opts.dev ? " --dev" : ""}`),
+    paint(c.dim, `  ◈ installer: ${pm} via ${engineFor(pm)} (detected: ${via})${saveFlagsSuffix(opts)}`),
   );
 
   const nonRegistry = reports.filter((r) => r.isNonRegistry);
@@ -327,6 +354,8 @@ export async function run(argv: string[]): Promise<void> {
     cwd: process.cwd(),
     packages: installable,
     dev: opts.dev,
+    peer: opts.peer,
+    optional: opts.optional,
     extraArgs: opts.extraArgs,
     dryRun: opts.dryRun,
   };
