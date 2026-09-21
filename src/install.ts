@@ -148,7 +148,13 @@ async function installWithYarn(req: InstallRequest): Promise<InstallResult> {
   );
   const linker = configuration.get("nodeLinker");
 
-  const { workspace } = await Project.find(configuration, cwd);
+  let findResult: Awaited<ReturnType<typeof Project.find>>;
+  try {
+    findResult = await Project.find(configuration, cwd);
+  } catch (err) {
+    throw new InstallError(`no yarn project found under ${req.cwd}: ${errMsg(err)}`);
+  }
+  const { workspace } = findResult;
   if (!workspace) throw new InstallError(`no yarn workspace found under ${req.cwd}`);
 
   // Mirror npm semantics: caret default, exact pin on --save-exact/-E.
