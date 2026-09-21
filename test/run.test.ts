@@ -67,7 +67,7 @@ function output(): string {
 describe("run", () => {
   test("version flag prints and exits clean", async () => {
     await run(["-v"]);
-    expect(output()).toContain("0.1.0");
+    expect(output()).toContain("0.1.1");
     expect(process.exitCode).toBe(0);
   });
   test("no packages does project install (dry-run)", async () => {
