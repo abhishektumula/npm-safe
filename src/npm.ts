@@ -1,4 +1,5 @@
 import type { NpmMeta } from "./types.ts";
+import { encodePkg } from "./spec.ts";
 
 const REGISTRY = "https://registry.npmjs.org";
 
@@ -24,7 +25,7 @@ function cleanAuthor(raw: unknown): string {
 // Fast path: /:pkg/latest is a few KB vs multi-MB full packument.
 // Same data that powers npmjs.com/package/:pkg, minus the HTML weight.
 export async function fetchNpmMeta(name: string): Promise<NpmMeta> {
-  const res = await fetch(`${REGISTRY}/${encodeURIComponent(name)}/latest`, {
+  const res = await fetch(`${REGISTRY}/${encodePkg(name)}/latest`, {
     headers: { Accept: "application/json" },
     signal: AbortSignal.timeout(8000),
   });

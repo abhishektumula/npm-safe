@@ -21,7 +21,7 @@ export function render(reports: PackageReport[], showAll: boolean): string {
   const compact = reports.length > 2 && !showAll;
   const out: string[] = [];
   out.push("");
-  out.push(paint(c.pink, "  ◆ npm-safe") + paint(c.dim, "  package intel before you install"));
+  out.push(paint(c.pink, "  ◆ npms") + paint(c.dim, "  package intel before you install"));
   out.push(rule);
   for (const r of reports) {
     out.push(compact ? compactRow(r) : fullCard(r, showAll));
