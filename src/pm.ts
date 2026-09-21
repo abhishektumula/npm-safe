@@ -3,12 +3,9 @@ import { join } from "node:path";
 
 export type Pm = "bun" | "pnpm" | "npm" | "yarn";
 
-const INSTALL_ARGS: Record<Pm, { normal: string[]; dev: string[] }> = {
-  bun: { normal: ["add"], dev: ["add", "--dev"] },
-  pnpm: { normal: ["add"], dev: ["add", "--save-dev"] },
-  npm: { normal: ["install"], dev: ["install", "--save-dev"] },
-  yarn: { normal: ["add"], dev: ["add", "--dev"] },
-};
+// NOTE: installs no longer shell out with per-PM argv (see install.ts —
+// npm/yarn run in-process via their official engines). This module only
+// detects which manager owns the current directory.
 
 // Local-only, read-only detection — never touches globals.
 // Mirrors: [ -f pnpm-lock.yaml ] / yarn.lock / package-lock.json / bun.lock
@@ -38,10 +35,4 @@ function readPackageManagerField(cwd: string): string | null {
   } catch {
     return null;
   }
-}
-
-export function installArgs(pm: string, dev: boolean): string[] | null {
-  if (pm === "brew") return ["install"]; // system packages only
-  const entry = (INSTALL_ARGS as Record<string, { normal: string[]; dev: string[] }>)[pm];
-  return entry ? (dev ? entry.dev : entry.normal) : null;
 }
