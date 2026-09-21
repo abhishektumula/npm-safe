@@ -1,0 +1,6 @@
+- [] fix MIT License on npm registry
+- [] change install command on npm registry
+- [] update readme
+- [] improve verbose on cli
+- [] fix the orbs (UI change)
+- [] reduce dependencies
