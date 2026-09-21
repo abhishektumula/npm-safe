@@ -232,6 +232,33 @@ describe("run", () => {
     expect(output()).toContain("(registry: https://r.example.com)");
     expect(process.exitCode).toBe(0);
   });
+  test("unparsable snyk health warns but still installs", async () => {
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes("security.snyk.io")) {
+        return { status: 200, ok: true, text: async () => "<html>redesigned</html>" };
+      }
+      const name = u.split("/").at(-2) ?? "";
+      return {
+        status: 200,
+        ok: true,
+        json: async () => ({
+          name,
+          version: "1.0.0",
+          description: `${name} package`,
+          author: "tester",
+          license: "MIT",
+          repository: "https://github.com/test/test",
+          dependencies: {},
+          maintainers: [],
+        }),
+      };
+    }) as unknown as typeof fetch;
+    await run(["add", "pkgr1", "--dry-run", "--pm", "bun"]);
+    expect(output()).toContain("snyk health unparsable");
+    expect(output()).toContain("unknown, not healthy");
+    expect(process.exitCode).toBe(0);
+  });
   test("mix of registry and non-registry specs", async () => {
     stubRegistry(["pkgr1"]);
     await run(["add", "pkgr1", "user/repo", "--dry-run", "--pm", "bun", "-y"]);

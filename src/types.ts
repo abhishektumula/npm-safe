@@ -19,6 +19,9 @@ export interface HealthBreakdown {
 export interface Health {
   score: number | null; // 0-100, null when snyk unreachable
   breakdown: HealthBreakdown | null;
+  /** true when snyk answered 200 but the page had no parseable markers
+      (layout change / bot wall) — unknown health, not healthy */
+  unparsed?: boolean;
 }
 
 export interface PackageReport {

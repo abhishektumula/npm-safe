@@ -54,7 +54,13 @@ describe("render full card", () => {
     const text = stripAnsi(
       render([{ ...report(), health: { score: null, breakdown: null } }], false),
     );
-    expect(text).toContain("n/a");
+    expect(text).toContain("n/a (snyk unreachable)");
+  });
+  test("unparsed health renders a parse-failed warning, not plain n/a", () => {
+    const text = stripAnsi(
+      render([{ ...report(), health: { score: null, breakdown: null, unparsed: true } }], false),
+    );
+    expect(text).toContain("n/a (snyk parse failed)");
   });
   test("unrecognized badge text renders dim", () => {
     const r = report();

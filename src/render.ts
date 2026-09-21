@@ -3,7 +3,8 @@ import type { PackageReport } from "./types.ts";
 
 const rule = paint(c.dim, "─".repeat(52));
 
-function scoreText(score: number | null): string {
+function scoreText(score: number | null, unparsed?: boolean): string {
+  if (score === null && unparsed) return paint(c.yellow, "n/a (snyk parse failed)");
   if (score === null) return paint(c.dim, "n/a (snyk unreachable)");
   return paint(healthColor(score), `${score}/100`) + " " + healthBar(score);
 }
@@ -53,7 +54,7 @@ function fullCard(r: PackageReport, showAll: boolean): string {
       `${paint(c.lime, String(r.transitiveCount))}${paint(c.dim, " transitive")}  ` +
       `${paint(c.white, String(r.totalCount))}${paint(c.dim, " total")}`,
   );
-  L.push(`  ${paint(c.violet, "health ")} ${scoreText(r.health.score)}`);
+  L.push(`  ${paint(c.violet, "health ")} ${scoreText(r.health.score, r.health.unparsed)}`);
   if (r.health.breakdown) {
     const b = r.health.breakdown;
     L.push(
@@ -87,7 +88,12 @@ function compactRow(r: PackageReport): string {
   }
   if (!r.meta) return paint(c.red, `  ✖ ${r.query}`) + paint(c.dim, ` — ${r.metaError ?? "fetch failed"}`);
   const depBits = `${r.totalCount}(${r.directCount}d, ${r.transitiveCount}t)`;
-  const score = r.health.score === null ? paint(c.dim, "n/a") : paint(healthColor(r.health.score), `${r.health.score}/100`);
+  const score =
+    r.health.score === null
+      ? r.health.unparsed
+        ? paint(c.yellow, "n/a (parse failed)")
+        : paint(c.dim, "n/a")
+      : paint(healthColor(r.health.score), `${r.health.score}/100`);
   return (
     `  ${paint(c.cyan, "◆")} ${paint(c.white, r.meta.name)} ${paint(c.dim, "v" + r.meta.version)}  ` +
     `${paint(c.lime, depBits)}  ${paint(c.dim, "health")} ${score}`

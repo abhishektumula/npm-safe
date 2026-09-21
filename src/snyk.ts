@@ -32,6 +32,10 @@ export async function fetchHealth(name: string): Promise<Health> {
     community: pick(html, "community"),
   };
   const hasAny = Object.values(breakdown).some((v) => v !== "n/a");
+  // A 200 with zero markers means the page shape changed (or a bot wall),
+  // not a healthy package — flag it so callers can say so out loud instead
+  // of silently rendering "unreachable".
+  if (score === null && !hasAny) return { score, breakdown: null, unparsed: true };
   return { score, breakdown: hasAny ? breakdown : null };
 }
 

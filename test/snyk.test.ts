@@ -45,8 +45,22 @@ describe("fetchHealth", () => {
     }) as unknown as typeof fetch;
     expect(await fetchHealth("x")).toEqual({ score: null, breakdown: null });
   });
-  test("page without markers yields nulls", async () => {
+  test("page without markers is flagged unparsed, not just empty", async () => {
     stubHtml("<html><body>changed layout</body></html>");
-    expect(await fetchHealth("x")).toEqual({ score: null, breakdown: null });
+    expect(await fetchHealth("x")).toEqual({ score: null, breakdown: null, unparsed: true });
+  });
+  test("score without breakdown is parsed, not unparsed", async () => {
+    stubHtml(`<span class="score-number">70/100</span><p>redesigned</p>`);
+    const health = await fetchHealth("x");
+    expect(health.score).toBe(70);
+    expect(health.breakdown).toBeNull();
+    expect(health.unparsed).toBeUndefined();
+  });
+  test("breakdown without score is parsed, not unparsed", async () => {
+    stubHtml(`<span class="criterion-label">security</span><span>No known security issues</span>`);
+    const health = await fetchHealth("x");
+    expect(health.score).toBeNull();
+    expect(health.breakdown).not.toBeNull();
+    expect(health.unparsed).toBeUndefined();
   });
 });

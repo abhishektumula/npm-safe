@@ -398,6 +398,14 @@ export async function run(argv: string[]): Promise<void> {
     console.log(paint(c.yellow, `  ⚠ non-registry specs (intel skipped): ${specs}`));
   }
 
+  // Snyk answered but nothing parsed: say so out loud. Fail-open stays
+  // (install proceeds), but nobody mistakes it for a clean bill of health.
+  const unparsed = reports.filter((r) => r.health.unparsed);
+  if (unparsed.length > 0) {
+    const specs = unparsed.map((r) => r.query).join(", ");
+    console.log(paint(c.yellow, `  ⚠ snyk health unparsable (${specs}) — unknown, not healthy`));
+  }
+
   const registryFailed = reports.filter((r) => !r.isNonRegistry && r.meta === null);
   if (registryFailed.length === reports.length && nonRegistry.length === 0) {
     console.error(paint(c.red, "  ✖ nothing to install — all lookups failed."));
