@@ -35,6 +35,8 @@ export interface PackageReport {
 
 export interface CliOptions {
   packages: string[];
+  /** unknown flags forwarded verbatim to the package manager */
+  extraArgs: string[];
   showAll: boolean;
   yes: boolean;
   dev: boolean;

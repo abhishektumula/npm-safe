@@ -1,17 +1,109 @@
 import { spawnSync } from "node:child_process";
+import { createInterface } from "node:readline";
 import { c, paint } from "./colors.ts";
 import { fetchNpmMeta } from "./npm.ts";
 import { fetchHealth } from "./snyk.ts";
 import { countTransitive } from "./deps.ts";
 import { detectPm, installArgs } from "./pm.ts";
 import { render } from "./render.ts";
+import { splitSpec } from "./spec.ts";
 import type { CliOptions, PackageReport } from "./types.ts";
 
 const VERSION = "0.1.0";
 
-export function parseArgs(argv: string[]): { cmd: string; opts: CliOptions; help: boolean; version: boolean } {
+export const INSTALL_VERBS = new Set(["install", "i", "add"]);
+
+// First-positional npm commands that are NOT installs — passed straight
+// through to the detected package manager with no intel screen.
+export const PASSTHROUGH_CMDS = new Set([
+  "uninstall",
+  "remove",
+  "rm",
+  "un",
+  "update",
+  "up",
+  "upgrade",
+  "run",
+  "exec",
+  "x",
+  "test",
+  "run-script",
+  "publish",
+  "pack",
+  "login",
+  "logout",
+  "whoami",
+  "who",
+  "view",
+  "info",
+  "show",
+  "list",
+  "ls",
+  "ll",
+  "la",
+  "outdated",
+  "audit",
+  "fund",
+  "prune",
+  "dedupe",
+  "ci",
+  "init",
+  "create",
+  "reinstall",
+  "link",
+  "unlink",
+  "cache",
+  "config",
+  "set",
+  "get",
+  "ping",
+  "prefix",
+  "root",
+  "bin",
+  "docs",
+  "repo",
+  "home",
+  "explore",
+  "edit",
+  "rebuild",
+  "restart",
+  "start",
+  "stop",
+  "token",
+  "profile",
+  "team",
+  "org",
+  "owner",
+  "deprecate",
+  "dist-tag",
+  "hook",
+  "star",
+  "stars",
+  "search",
+  "s",
+  "se",
+  "find",
+  "version",
+  "pkg",
+]);
+
+export type Cmd = "install" | "passthrough";
+
+export interface Parsed {
+  cmd: Cmd;
+  /** npm subcommand for passthrough (run, test, …); "install" for safe flow */
+  subcommand: string;
+  /** raw args (after the subcommand) forwarded verbatim to the PM */
+  passthroughArgs: string[];
+  opts: CliOptions;
+  help: boolean;
+  version: boolean;
+}
+
+export function parseArgs(argv: string[]): Parsed {
   const opts: CliOptions = {
     packages: [],
+    extraArgs: [],
     showAll: false,
     yes: false,
     dev: false,
@@ -19,13 +111,17 @@ export function parseArgs(argv: string[]): { cmd: string; opts: CliOptions; help
     json: false,
     pmOverride: null,
   };
-  let cmd = "install";
   let help = false;
   let version = false;
+  const positionals: string[] = [];
+
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
-    if (a === "--") continue;
-    else if (a === "-a" || a === "--all") opts.showAll = true;
+    if (a === "--") {
+      // Everything after -- is forwarded verbatim.
+      opts.extraArgs.push(...argv.slice(i + 1));
+      break;
+    } else if (a === "-a" || a === "--all") opts.showAll = true;
     else if (a === "-y" || a === "--yes") opts.yes = true;
     else if (a === "-D" || a === "--dev" || a === "--save-dev") opts.dev = true;
     else if (a === "--dry-run") opts.dryRun = true;
@@ -34,24 +130,47 @@ export function parseArgs(argv: string[]): { cmd: string; opts: CliOptions; help
     else if (a === "-v" || a === "--version") version = true;
     else if (a === "--pm") opts.pmOverride = argv[++i] ?? null;
     else if (a.startsWith("--pm=")) opts.pmOverride = a.slice(5);
-    else if (["install", "i", "add"].includes(a) && i === 0) cmd = "install";
-    else if (a.startsWith("-")) {
-      console.error(paint(c.red, `unknown flag: ${a}`));
-      help = true;
-    } else opts.packages.push(a);
+    else if (a.startsWith("-")) opts.extraArgs.push(a);
+    else positionals.push(a);
   }
-  return { cmd, opts, help, version };
+
+  const first = positionals[0];
+  if (first !== undefined && PASSTHROUGH_CMDS.has(first)) {
+    return {
+      cmd: "passthrough",
+      subcommand: first,
+      passthroughArgs: [...positionals.slice(1), ...opts.extraArgs],
+      opts,
+      help,
+      version,
+    };
+  }
+  // install verb explicit (npms install/i/add …) or bare packages (npms express …)
+  const packages =
+    first !== undefined && INSTALL_VERBS.has(first) ? positionals.slice(1) : positionals;
+  opts.packages = packages;
+  return {
+    cmd: "install",
+    subcommand: "install",
+    passthroughArgs: [],
+    opts,
+    help,
+    version,
+  };
 }
 
 export function helpText(): string {
   return `
-  ${paint(c.pink, "◆ npm-safe")} ${paint(c.dim, `v${VERSION} — see package intel before you install`)}
-  ${paint(c.dim, "Shown in your terminal font (JetBrainsMono / GeistMono Nerd Font friendly).")}
+  ${paint(c.pink, "◆ npms")} ${paint(c.dim, `v${VERSION} — npm wrapper with safety intel before you install`)}
+  ${paint(c.dim, "Runs on Node ≥18, Bun, and any runtime with fetch + Web APIs.")}
 
   ${paint(c.cyan, "usage")}
-    npm-safe install <pkg...> [flags]     inspect, confirm, then install
-    npm-safe i express lodash -a           inspect two packages, full detail
-    npm-safe add "express@5" --dry-run     inspect only, install nothing
+    npms install <pkg...> [flags]     inspect, confirm, then install
+    npms i express lodash -a           inspect two packages, full detail
+    npms add "express@5" --dry-run     inspect only, install nothing
+    npms express lodash -y             bare packages also mean install
+    npms run dev / test / exec …       passthrough to your package manager
+    npms uninstall foo                 passthrough, no intel screen
 
   ${paint(c.cyan, "flags")}
     -a, --all        full detail: direct dep names, transitive sample, license, snyk breakdown
@@ -65,17 +184,17 @@ export function helpText(): string {
 
   ${paint(c.cyan, "notes")}
     3+ packages switch to a compact row: total(direct, transitive), no repo url.
-    Manager is auto-detected from local lockfiles only
-    (pnpm-lock.yaml, yarn.lock, package-lock.json, bun.lock) — nothing global
-    is read or changed.
+    Manager is auto-detected from local lockfiles (+ packageManager field),
+    defaulting to npm. Unknown flags are forwarded to the installer.
+    (alias: npm-safe still works)
 `;
 }
 
 async function inspectOne(query: string): Promise<PackageReport> {
   const t0 = Date.now();
-  const base = query.split("@").length > 2 || query.startsWith("@") ? query : query.split("@")[0]!;
-  const name = base || query;
-  const [metaRes, health] = await Promise.allSettled([fetchNpmMeta(name), fetchHealth(name)]);
+  const { name } = splitSpec(query);
+  const lookup = name || query;
+  const [metaRes, health] = await Promise.allSettled([fetchNpmMeta(lookup), fetchHealth(lookup)]);
   if (metaRes.status === "rejected") {
     return {
       query,
@@ -104,21 +223,50 @@ async function inspectOne(query: string): Promise<PackageReport> {
   };
 }
 
+// node:readline — works in Node and Bun. Bun's `for await (console)`
+// iterator does not exist in Node, so we never touch Bun.* APIs.
 async function confirm(): Promise<boolean> {
-  process.stdout.write(paint(c.yellow, "\n  install these packages? [y/N] "));
-  for await (const line of console) {
-    const a = line.trim().toLowerCase();
+  if (!process.stdin.isTTY) return false;
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await new Promise<string>((resolve) => {
+      rl.question(paint(c.yellow, "\n  install these packages? [y/N] "), resolve);
+    });
+    const a = answer.trim().toLowerCase();
     return a === "y" || a === "yes";
+  } finally {
+    rl.close();
   }
-  return false;
+}
+
+function runPm(pm: string, args: string[]): number {
+  const res = spawnSync(pm, args, { stdio: "inherit" });
+  return res.status ?? 1;
 }
 
 export async function run(argv: string[]): Promise<void> {
-  const { opts, help, version } = parseArgs(argv);
+  const { cmd, subcommand, passthroughArgs, opts, help, version } = parseArgs(argv);
   if (version) {
     console.log(VERSION);
     return;
   }
+
+  const { pm, via } = detectPm(opts.pmOverride);
+
+  if (cmd === "passthrough") {
+    if (help) {
+      console.log(helpText());
+      return;
+    }
+    console.log(paint(c.dim, `  ◈ ${pm} ${subcommand} (via ${via})`));
+    if (opts.dryRun) {
+      console.log(paint(c.dim, `  ◌ dry-run: would run \`${pm} ${[subcommand, ...passthroughArgs].join(" ")}\``));
+      return;
+    }
+    process.exitCode = runPm(pm, [subcommand, ...passthroughArgs]);
+    return;
+  }
+
   if (help || opts.packages.length === 0) {
     console.log(helpText());
     return;
@@ -133,7 +281,6 @@ export async function run(argv: string[]): Promise<void> {
     console.log(render(reports, opts.showAll));
   }
 
-  const { pm, via } = detectPm(opts.pmOverride);
   const args = installArgs(pm, opts.dev);
   if (!args) {
     console.error(paint(c.red, `  ✖ unsupported package manager: ${pm}`));
@@ -148,16 +295,16 @@ export async function run(argv: string[]): Promise<void> {
     return;
   }
   const installable = reports.filter((r) => r.meta).map((r) => r.query);
+  const fullArgs = [...args, ...installable, ...opts.extraArgs];
 
   if (opts.dryRun) {
-    console.log(paint(c.dim, `  ◌ dry-run: would run \`${pm} ${[...args, ...installable].join(" ")}\``));
+    console.log(paint(c.dim, `  ◌ dry-run: would run \`${pm} ${fullArgs.join(" ")}\``));
     return;
   }
   if (!opts.yes && !(await confirm())) {
     console.log(paint(c.dim, "  ◌ aborted. nothing installed."));
     return;
   }
-  console.log(paint(c.cyan, `\n  ▶ ${pm} ${[...args, ...installable].join(" ")}\n`));
-  const res = spawnSync(pm, [...args, ...installable], { stdio: "inherit" });
-  process.exitCode = res.status ?? 1;
+  console.log(paint(c.cyan, `\n  ▶ ${pm} ${fullArgs.join(" ")}\n`));
+  process.exitCode = runPm(pm, fullArgs);
 }

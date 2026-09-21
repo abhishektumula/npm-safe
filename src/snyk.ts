@@ -1,4 +1,5 @@
 import type { Health } from "./types.ts";
+import { encodePkg } from "./spec.ts";
 
 // Scrapes https://security.snyk.io/package/npm/:pkg (no API key needed).
 // Markers observed in the wild:
@@ -8,9 +9,9 @@ export async function fetchHealth(name: string): Promise<Health> {
   const empty: Health = { score: null, breakdown: null };
   let html: string;
   try {
-    const res = await fetch(`https://security.snyk.io/package/npm/${encodeURIComponent(name)}`, {
+    const res = await fetch(`https://security.snyk.io/package/npm/${encodePkg(name)}`, {
       headers: {
-        "User-Agent": "npm-safe/0.1.0",
+        "User-Agent": "npms/0.1.0",
         Accept: "text/html",
       },
       signal: AbortSignal.timeout(10000),
