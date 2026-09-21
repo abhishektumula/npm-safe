@@ -16,6 +16,7 @@ what rules are load-bearing, and exactly when to commit.
 | Typecheck         | `bun run check` (`tsc --noEmit`) |
 | Tests             | `bun test`                       |
 | Coverage          | `bun test --coverage` (≥90%)     |
+| Build (node dist) | `bun run build` → `dist/`        |
 | Intel smoke test  | `bun ./index.ts add left-pad --dry-run --pm npm` |
 | Binary-path smoke | `bun ./index.ts run --dry-run build` (no network, no spawn) |
 
@@ -28,7 +29,7 @@ what rules are load-bearing, and exactly when to commit.
 
 | File               | Owns                                                | Change when …                                      |
 | ------------------ | --------------------------------------------------- | -------------------------------------------------- |
-| `index.ts`         | Binary entry (`Bun.argv` → `run()`)                 | Entry/runtime support changes                      |
+| `index.ts`         | Binary entry (`process.argv` → `run()`, `node` shebang) | Entry/runtime support changes |
 | `src/cli.ts`       | Arg parsing, `install` vs `passthrough` routing, status output (thin orchestrator) | Flags, commands, UX flow |
 | `src/inspect.ts`   | `inspectOne()` + `inspectPackages()` orchestration over npm/snyk/deps | Intel pipeline changes |
 | `src/prompt.ts`    | `[y/N]` confirm via `node:readline` + pure `parseConfirmAnswer()` | Prompt UX |
