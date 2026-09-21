@@ -1,4 +1,4 @@
-# Extending npms
+# Extending nps
 
 Three recipes. Each ends with the same verification; follow
 [AGENTS.md](../AGENTS.md) §8 (commit policy) when you land the change.

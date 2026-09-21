@@ -103,7 +103,7 @@ describe("binarySaveFlags", () => {
 
 describe("resolveNpmWorkspace", () => {
   function wsDir(): string {
-    const dir = mkdtempSync(join(tmpdir(), "npms-ws-"));
+    const dir = mkdtempSync(join(tmpdir(), "nps-ws-"));
     writeFileSync(
       join(dir, "package.json"),
       JSON.stringify({ name: "root", version: "0.0.0", workspaces: ["packages/*"] }),
@@ -144,7 +144,7 @@ describe("resolveNpmWorkspace", () => {
     }
   });
   test("no workspaces field throws", () => {
-    const dir = mkdtempSync(join(tmpdir(), "npms-ws-"));
+    const dir = mkdtempSync(join(tmpdir(), "nps-ws-"));
     try {
       writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "solo" }));
       expect(() => resolveNpmWorkspace(dir, "api")).toThrow(/no workspaces defined/);
@@ -262,7 +262,7 @@ describe("binary boundary (dry-run only, no spawn)", () => {
 describe("applyYarnRegistryOverride", () => {
   test("flag wins over .yarnrc.yml", async () => {
     const core = await import("@yarnpkg/core");
-    const dir = mkdtempSync(join(tmpdir(), "npms-yarn-reg-"));
+    const dir = mkdtempSync(join(tmpdir(), "nps-yarn-reg-"));
     try {
       writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "probe", version: "0.0.0" }));
       writeFileSync(join(dir, ".yarnrc.yml"), "npmRegistryServer: https://rc.example.com\n");
@@ -276,7 +276,7 @@ describe("applyYarnRegistryOverride", () => {
   });
   test("plugin-provided rc settings no longer crash the load", async () => {
     const core = await import("@yarnpkg/core");
-    const dir = mkdtempSync(join(tmpdir(), "npms-yarn-reg-"));
+    const dir = mkdtempSync(join(tmpdir(), "nps-yarn-reg-"));
     try {
       writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "probe", version: "0.0.0" }));
       writeFileSync(
@@ -303,8 +303,8 @@ describe("performPassthrough", () => {
   });
   test("spawn start failure surfaces cause and cwd", async () => {
     await expect(
-      performPassthrough("bun", ["--version"], "/nonexistent-npms-probe-dir", false),
-    ).rejects.toThrow(/failed to start `bun`.*\/nonexistent-npms-probe-dir/);
+      performPassthrough("bun", ["--version"], "/nonexistent-nps-probe-dir", false),
+    ).rejects.toThrow(/failed to start `bun`.*\/nonexistent-nps-probe-dir/);
   });
   test("binary install executes harmless version probes", async () => {
     const res = await performInstall("bun", req({ packages: ["--version"], dryRun: false }));
@@ -314,7 +314,7 @@ describe("performPassthrough", () => {
 
 describe("yarn engine dry-runs (no network: ranged specs only)", () => {
   function yarnDir(withManifest: boolean): string {
-    const dir = mkdtempSync(join(tmpdir(), "npms-yarn-"));
+    const dir = mkdtempSync(join(tmpdir(), "nps-yarn-"));
     if (withManifest) {
       writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "probe", version: "0.0.0" }));
     }
@@ -378,7 +378,7 @@ describe("yarn engine dry-runs (no network: ranged specs only)", () => {
     }
   });
   test("workspace selects the named manifest", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "npms-yarn-ws-"));
+    const dir = mkdtempSync(join(tmpdir(), "nps-yarn-ws-"));
     try {
       writeFileSync(
         join(dir, "package.json"),
@@ -399,7 +399,7 @@ describe("yarn engine dry-runs (no network: ranged specs only)", () => {
     }
   });
   test("unknown workspace fails with available names", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "npms-yarn-ws-"));
+    const dir = mkdtempSync(join(tmpdir(), "nps-yarn-ws-"));
     try {
       writeFileSync(
         join(dir, "package.json"),

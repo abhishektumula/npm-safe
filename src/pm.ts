@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 export type Pm = "bun" | "pnpm" | "npm" | "yarn" | "brew";
 
-/** Every manager npms can route to. `brew` is opt-in only (--pm brew). */
+/** Every manager nps can route to. `brew` is opt-in only (--pm brew). */
 export const ALL_PMS = ["bun", "pnpm", "npm", "yarn", "brew"] as const;
 
 export class PmError extends Error {
@@ -13,7 +13,7 @@ export class PmError extends Error {
   }
 }
 
-/** True for exactly the managers npms can route to (see ALL_PMS). */
+/** True for exactly the managers nps can route to (see ALL_PMS). */
 export function isSupportedPm(value: string): value is Pm {
   return (ALL_PMS as readonly string[]).includes(value);
 }

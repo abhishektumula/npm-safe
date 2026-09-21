@@ -2,13 +2,13 @@
 
 ## Bin layout
 
-`package.json` ships one binary, `npms`, pointing at the built bundle:
+`package.json` ships one binary, `nps`, pointing at the built bundle:
 
 ```json
-"bin": { "npms": "./dist/index.js" }
+"bin": { "nps": "./dist/index.js" }
 ```
 
-The registry package is named `npm-safe`; the command is always `npms`.
+The registry package is named `npm-safe`; the command is always `nps`.
 Bins point at `dist/`, never at `./index.ts`: TypeScript source runs
 under Bun from a checkout, but an installed package must run under plain
 Node, so it needs the built JS. `files: ["dist", "README.md"]` keeps the
@@ -80,4 +80,4 @@ from another clone: unlink it and re-link from the right directory.
    (`git tag vX.Y.Z`) **only when explicitly asked** — never push or
    open PRs unasked.
 8. `npm publish --access public`, then sanity-install in a scratch dir:
-   `npm i -g npm-safe && npms --version`.
+   `npm i -g npm-safe && nps --version`.

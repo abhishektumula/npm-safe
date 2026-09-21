@@ -1,7 +1,7 @@
-# npms — see package intel before you install
+# nps — see package intel before you install
 
-`npms` is an npm wrapper with a safety screen. Instead of blindly running
-`npm install <pkg>`, you run `npms install <pkg>` and get, **before anything
+`nps` is an npm wrapper with a safety screen. Instead of blindly running
+`npm install <pkg>`, you run `nps install <pkg>` and get, **before anything
 is written**:
 
 - name + version, description, author, repo URL
@@ -14,6 +14,17 @@ package manager. Three or more packages collapse to compact rows so the
 screen stays scannable. (Registry package name: `npm-safe`.)
 
 ## Install
+
+From the registry (any machine with Node ≥18, no git checkout needed):
+
+```bash
+npm install -g @hort/nps   # exposes the `nps` command
+nps --version
+```
+
+Or try it without installing: `npx -y @hort/nps --version`.
+
+From source (development):
 
 ```bash
 bun install          # dependencies for development
@@ -28,25 +39,25 @@ bun ./index.ts install express
 Or link it as a global command:
 
 ```bash
-bun link             # exposes `npms` on your PATH
+bun link             # exposes `nps` on your PATH
 ```
 
 ## Usage
 
 ```bash
-npms install express lodash -a     # intel cards, full detail, then confirm
-npms install                       # no packages: install project deps
-npms i "express@5" --dry-run       # inspect only, install nothing
-npms express lodash -y             # bare packages also mean install
-npms add user/repo file:../lib    # non-registry specs skip intel + warn
-npms add left-pad -w api           # same workspace target on every manager
-npms run dev / test / exec …       # passthrough to your package manager
-npms uninstall foo                 # passthrough, no intel screen
-npms add left-pad --json           # machine-readable report
+nps install express lodash -a     # intel cards, full detail, then confirm
+nps install                       # no packages: install project deps
+nps i "express@5" --dry-run       # inspect only, install nothing
+nps express lodash -y             # bare packages also mean install
+nps add user/repo file:../lib    # non-registry specs skip intel + warn
+nps add left-pad -w api           # same workspace target on every manager
+nps run dev / test / exec …       # passthrough to your package manager
+nps uninstall foo                 # passthrough, no intel screen
+nps add left-pad --json           # machine-readable report
 ```
 
 Non-registry specs (`user/repo`, `file:`, `link:`, tarball URLs) have no
-registry page to inspect, so npms skips the intel screen for them with a
+registry page to inspect, so nps skips the intel screen for them with a
 warning and installs straight through. `-g`/`--global` is rejected for the
 npm/yarn in-process engines (they are local-project only) — use
 `--pm pnpm|bun|brew` or run the global install directly.
@@ -68,8 +79,8 @@ npm/yarn in-process engines (they are local-project only) — use
 
 Unknown flags are forwarded to binary installers (`pnpm`/`bun`/`brew`);
 the npm/yarn engines map `--save-exact`/`-E` plus the `-D`/`-P`/`-O` save
-flags and report the rest ignored. Note: npms `-P` always means *peer* —
-pnpm-native `-P` means `--save-prod`, so npms re-emits `--save-peer` for
+flags and report the rest ignored. Note: nps `-P` always means *peer* —
+pnpm-native `-P` means `--save-prod`, so nps re-emits `--save-peer` for
 pnpm. `-D` can't be combined with `-P`/`-O` on any manager.
 
 `-w`/`--workspace <name>` targets one workspace package on every manager:
@@ -84,7 +95,7 @@ The manager is auto-detected from your directory — lockfiles first
 then the `packageManager` field, defaulting to `npm`. Override any time
 with `--pm`.
 
-| Manager    | How npms installs                              |
+| Manager    | How nps installs                              |
 | ---------- | ---------------------------------------------- |
 | npm        | In-process via `@npmcli/arborist` (official engine) |
 | yarn       | In-process via `@yarnpkg/core` (official API)  |
@@ -126,7 +137,7 @@ a `dist/` bundle that also runs on Node ≥18.
 
 ## Packaging & releasing
 
-Binary shipped: `npms`, declared in `package.json`. Full procedure —
+Binary shipped: `nps`, declared in `package.json`. Full procedure —
 versioning, publish, release checklist — lives in
 [`docs/packaging.md`](docs/packaging.md).
 

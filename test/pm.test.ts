@@ -8,7 +8,7 @@ let prevCwd = "";
 
 function chdirTmp(files: Record<string, string> = {}): string {
   prevCwd = process.cwd();
-  const dir = mkdtempSync(join(tmpdir(), "npms-pm-"));
+  const dir = mkdtempSync(join(tmpdir(), "nps-pm-"));
   for (const [name, content] of Object.entries(files)) {
     writeFileSync(join(dir, name), content);
   }

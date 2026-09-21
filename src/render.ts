@@ -26,7 +26,7 @@ export function render(reports: PackageReport[], showAll: boolean): string {
   const compact = reports.length >= COMPACT_THRESHOLD && !showAll;
   const out: string[] = [];
   out.push("");
-  out.push(paint(c.pink, "  ◆ npms") + paint(c.dim, "  package intel before you install"));
+  out.push(paint(c.pink, "  ◆ nps") + paint(c.dim, "  package intel before you install"));
   out.push(rule);
   for (const r of reports) {
     out.push(compact ? compactRow(r) : fullCard(r, showAll));

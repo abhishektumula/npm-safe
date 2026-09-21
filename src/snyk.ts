@@ -18,7 +18,7 @@ export async function fetchHealth(name: string): Promise<Health> {
       `https://security.snyk.io/package/npm/${encodePkg(name)}`,
       {
         headers: {
-          "User-Agent": "npms/0.1.0",
+          "User-Agent": "nps/0.1.0",
           Accept: "text/html",
         },
       },

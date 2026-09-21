@@ -1,4 +1,4 @@
-Security + health review of npm-safe (npms). No code changed. Typecheck clean, bun test 112 pass, coverage 93% lines / 97% funcs, bun audit clean.
+Security + health review of npm-safe (nps). No code changed. Typecheck clean, bun test 112 pass, coverage 93% lines / 97% funcs, bun audit clean.
 What's already done right
 - No shell execution anywhere: single spawnSync(pm, args, …) boundary in src/install.ts:261, argv-only, no shell:true, no string building.
 - No secrets, no dotenv, no eval/exec, no Bun.* in src/, .env* gitignored.

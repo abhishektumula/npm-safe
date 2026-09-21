@@ -1,7 +1,7 @@
 # Publishing `npm-safe` to the npm registry
 
 Step-by-step release guide for this package (registry name `npm-safe`,
-binary `npms`). It follows the flow of npm's own
+binary `nps`). It follows the flow of npm's own
 [Creating and publishing scoped public packages](https://docs.npmjs.com/creating-and-publishing-scoped-public-packages)
 — account, review, test, publish, verify — adapted to this repo.
 Note where scoped vs unscoped differs: `npm-safe` is **unscoped**, so it
@@ -39,7 +39,7 @@ These are already set in this repo — verify, don't retype:
 
 ```bash
 node -e "const p = require('./package.json'); console.log(p.name, p.version, JSON.stringify(p.bin), JSON.stringify(p.files))"
-# expect: npm-safe <version> {"npms":"./dist/index.js"} ["dist","README.md"]
+# expect: npm-safe <version> {"nps":"./dist/index.js"} ["dist","README.md"]
 ```
 
 What each field does:
@@ -47,7 +47,7 @@ What each field does:
 | Field | Value | Why |
 |---|---|---|
 | `name` | `npm-safe` | Registry name (unscoped → public by default) |
-| `bin.npms` | `./dist/index.js` | Installed command. Points at the **built** bundle — never at `./index.ts`, so it runs under plain Node, not just Bun |
+| `bin.nps` | `./dist/index.js` | Installed command. Points at the **built** bundle — never at `./index.ts`, so it runs under plain Node, not just Bun |
 | `files` | `["dist", "README.md"]` | Tarball allowlist: only the bundle + readme ship |
 | `prepublishOnly` | `bun run build` | Rebuilds `dist/` automatically on every `npm publish` |
 
@@ -98,8 +98,8 @@ the binary on `PATH`):
 cd "$(mktemp -d)"
 npm pack /path/to/npm-safe --dry-run >/dev/null  # sanity: builds file list
 npm install -g /path/to/npm-safe/npm-safe-<version>.tgz
-npms --version                   # expect the version from step 3
-npms add left-pad --dry-run --pm npm   # end-to-end smoke as a real user
+nps --version                   # expect the version from step 3
+nps add left-pad --dry-run --pm npm   # end-to-end smoke as a real user
 ```
 
 ## 6. Log in
@@ -147,7 +147,7 @@ npm view npm-safe dist.tarball   # the file users download
 - From a scratch directory (or another machine), install as a stranger:
   ```bash
   npm install -g npm-safe
-  npms --version
+  nps --version
   ```
 
 ## 9. Publishing updates
@@ -192,4 +192,4 @@ A GAT with bypass-2FA does **not** bypass approval-time 2FA. Details:
 | `E403 cannot publish over previously published version` | Bump `version` (step 3); registry versions are immutable |
 | OTP / `E401` at publish | 2FA prompt — enter the authenticator code; for headless, use a GAT (step 0/6) |
 | `EACCES` on `npm install -g` | Global prefix not writable → [fix perms](https://docs.npmjs.com/resolving-eacces-permissions-errors-when-installing-packages-globally), never `sudo npm` |
-| Stale `npms` after `bun link` (dev only) | Linked bins point at `dist/` — rerun `bun run build` after every change |
+| Stale `nps` after `bun link` (dev only) | Linked bins point at `dist/` — rerun `bun run build` after every change |

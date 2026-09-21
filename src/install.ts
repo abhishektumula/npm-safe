@@ -622,7 +622,7 @@ async function installWithYarn(req: InstallRequest): Promise<InstallResult> {
 }
 
 // --- binary boundary: pnpm / bun / brew ------------------------------------
-// No official programmatic install API exists for these managers, so npms
+// No official programmatic install API exists for these managers, so nps
 // shells out. Single place, same result type, no shell-string building
 // (argv array only — no quoting bugs, no injection).
 

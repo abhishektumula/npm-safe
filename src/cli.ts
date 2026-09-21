@@ -117,7 +117,7 @@ export function parseArgs(argv: string[]): Parsed {
   let help = false;
   let version = false;
   const positionals: string[] = [];
-  // Original-order args minus npms-consumed flags: passthrough must forward
+  // Original-order args minus nps-consumed flags: passthrough must forward
   // verbatim (`run dev --port 3000`, not `run dev 3000 --port`).
   const kept: string[] = [];
 
@@ -165,7 +165,7 @@ export function parseArgs(argv: string[]): Parsed {
       version,
     };
   }
-  // install verb explicit (npms install/i/add …) or bare packages (npms express …)
+  // install verb explicit (nps install/i/add …) or bare packages (nps express …)
   const packages =
     first !== undefined && INSTALL_VERBS.has(first) ? positionals.slice(1) : positionals;
   opts.packages = packages;
@@ -197,18 +197,18 @@ export function registrySuffix(o: { registry: string | null }): string {
 
 export function helpText(): string {
   return `
-  ${paint(c.pink, "◆ npms")} ${paint(c.dim, `v${VERSION} — npm wrapper with safety intel before you install`)}
+  ${paint(c.pink, "◆ nps")} ${paint(c.dim, `v${VERSION} — npm wrapper with safety intel before you install`)}
   ${paint(c.dim, "Runs on Node ≥18, Bun, and any runtime with fetch + Web APIs.")}
 
   ${paint(c.cyan, "usage")}
-    npms install <pkg...> [flags]     inspect, confirm, then install
-    npms install                       install project deps (no intel screen)
-    npms i express lodash -a           inspect two packages, full detail
-    npms add "express@5" --dry-run     inspect only, install nothing
-    npms express lodash -y             bare packages also mean install
-    npms add user/repo file:../lib     non-registry specs skip intel + warn
-    npms run dev / test / exec …       passthrough to your package manager
-    npms uninstall foo                 passthrough, no intel screen
+    nps install <pkg...> [flags]     inspect, confirm, then install
+    nps install                       install project deps (no intel screen)
+    nps i express lodash -a           inspect two packages, full detail
+    nps add "express@5" --dry-run     inspect only, install nothing
+    nps express lodash -y             bare packages also mean install
+    nps add user/repo file:../lib     non-registry specs skip intel + warn
+    nps run dev / test / exec …       passthrough to your package manager
+    nps uninstall foo                 passthrough, no intel screen
 
   ${paint(c.cyan, "flags")}
     -a, --all        full detail: direct dep names, transitive sample, license, snyk breakdown
@@ -242,11 +242,11 @@ export function helpText(): string {
     one workspace package on every manager (same command, same target);
     --filter stays binary-only and is rejected on the npm/yarn engines.
     Scores under 40/100 (or unavailable health) print a warning first —
-    advisory only, npms never blocks.
+    advisory only, nps never blocks.
 `;
 }
 
-/** Scores below this print a pre-prompt warning. Advisory only: npms informs, never blocks. */
+/** Scores below this print a pre-prompt warning. Advisory only: nps informs, never blocks. */
 export const LOW_HEALTH_THRESHOLD = 40;
 
 /** Warn about low or unavailable health before the install prompt. */
@@ -352,7 +352,7 @@ export async function run(argv: string[]): Promise<void> {
     return;
   }
 
-  // Bare npms install (no packages) -> project install (like npm install)
+  // Bare nps install (no packages) -> project install (like npm install)
   if (opts.packages.length === 0) {
     if (help) {
       console.log(helpText());

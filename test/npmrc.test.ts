@@ -27,12 +27,12 @@ afterEach(() => {
 });
 
 function proj(files: Record<string, string>, homeFiles: Record<string, string> = {}): string {
-  const home = mkdtempSync(join(tmpdir(), "npms-home-"));
+  const home = mkdtempSync(join(tmpdir(), "nps-home-"));
   process.env.HOME = home;
   for (const [name, content] of Object.entries(homeFiles)) {
     writeFileSync(join(home, name), content);
   }
-  const dir = mkdtempSync(join(tmpdir(), "npms-npmrc-"));
+  const dir = mkdtempSync(join(tmpdir(), "nps-npmrc-"));
   for (const [name, content] of Object.entries(files)) {
     writeFileSync(join(dir, name), content);
   }
@@ -41,7 +41,7 @@ function proj(files: Record<string, string>, homeFiles: Record<string, string> =
 
 function cleanup(dir: string): void {
   rmSync(dir, { recursive: true, force: true });
-  if (process.env.HOME?.includes("npms-home-")) {
+  if (process.env.HOME?.includes("nps-home-")) {
     rmSync(process.env.HOME, { recursive: true, force: true });
   }
 }

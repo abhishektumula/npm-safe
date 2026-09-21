@@ -1,6 +1,6 @@
 // Minimal ambient types for @npmcli/arborist.
 // Arborist ships no bundled types and @types/npmcli__arborist tracks an
-// old major, so we declare exactly the surface npms uses. If the library
+// old major, so we declare exactly the surface nps uses. If the library
 // ever changes this surface, the mismatch fails here — loudly, in one place.
 declare module "@npmcli/arborist" {
   export interface ArboristOptions {

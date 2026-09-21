@@ -1,6 +1,6 @@
-# AGENTS.md — npms contributor contract
+# AGENTS.md — nps contributor contract
 
-`npms` (package `npm-safe`) is an npm wrapper: it shows package intel
+`nps` (package `npm-safe`) is an npm wrapper: it shows package intel
 (dependencies, health) **before** installing, asks `[y/N]`, then installs
 through the project’s own package manager.
 
@@ -75,7 +75,7 @@ Data flow: `run()` → `parseArgs()` → per-package `inspectOne()`
   `pkg@file:…` forms) skip intel with a warning and install straight
   through. The yarn engine can't express them as descriptors, so those fall
   back to the `yarn` binary.
-- Bare `npms install` (no packages) performs a project install like the
+- Bare `nps install` (no packages) performs a project install like the
   manager does — npm/yarn in-process, pnpm/bun/brew via `<pm> install`.
 - `-w`/`--workspace <name>` (also `-w` attached form) targets one workspace
   package on every manager: npm filters via Arborist `workspaces`
@@ -106,8 +106,8 @@ Show per package: name + version, description, author, repo URL,
 direct / transitive / total dep counts, health score `/100` with bar plus
 `security` / `popularity` / `maintenance` / `community` breakdown.
 Intel: `registry.npmjs.org` for metadata, `security.snyk.io` (scraped) for health.
-Flow: `npms install <pkgs>` → intel cards → `[y/N]` → install with the
-detected manager. Bare `npms install` installs project deps (no intel).
+Flow: `nps install <pkgs>` → intel cards → `[y/N]` → install with the
+detected manager. Bare `nps install` installs project deps (no intel).
 Non-registry specs skip intel with a warning. Multiple packages in one
 command. 3+ packages (without `-a`) collapse to compact rows:
 `total(direct, transitive)`, no repo URL.
@@ -138,7 +138,7 @@ Keep latency minimal (parallel fetches, bounded BFS), output colorful
 - `README.md`: description, install, every command (dev/build/test/
   package/release), flags, examples.
 - `docs/extending.md`: how to add a package manager, intel source, or flag.
-- `docs/packaging.md`: bin (`npms`), build, publish, release checklist.
+- `docs/packaging.md`: bin (`nps`), build, publish, release checklist.
 - Code change without matching doc update = incomplete set.
 
 ## 8. Commit policy — when to commit

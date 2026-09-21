@@ -76,7 +76,7 @@ describe("parseArgs routing", () => {
       expect(parseArgs([sub, "foo"]).cmd).toBe("passthrough");
     }
   });
-  test("npms flags are consumed, not forwarded", () => {
+  test("nps flags are consumed, not forwarded", () => {
     const p = parseArgs(["run", "--dry-run", "dev"]);
     expect(p.passthroughArgs).toEqual(["dev"]);
     expect(p.opts.dryRun).toBe(true);
@@ -192,9 +192,9 @@ describe("parseArgs flags", () => {
 });
 
 describe("helpText", () => {
-  test("mentions npms, usage, and flags", () => {
+  test("mentions nps, usage, and flags", () => {
     const text = stripAnsi(helpText());
-    expect(text).toContain("npms");
+    expect(text).toContain("nps");
     expect(text).toContain("usage");
     expect(text).toContain("--dry-run");
     expect(text).toContain("passthrough");
