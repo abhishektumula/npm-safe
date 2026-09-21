@@ -11,14 +11,13 @@
     "check": "bunx tsc --noEmit"
   },
   "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
+    "@types/bun": "latest",
+    "typescript": "^7.0.2"
   },
   "dependencies": {
     "@npmcli/arborist": "^10.0.2",
     "@yarnpkg/core": "^4.9.1",
+    "@yarnpkg/fslib": "^3.1.5",
     "@yarnpkg/plugin-nm": "^4.1.1",
     "@yarnpkg/plugin-npm": "^3.7.1",
     "@yarnpkg/plugin-pnp": "^4.2.1"
