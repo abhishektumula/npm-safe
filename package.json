@@ -1,12 +1,22 @@
 {
   "name": "npm-safe",
-  "module": "index.ts",
+  "version": "0.1.0",
+  "description": "See npm package intel (deps, health) before you install",
   "type": "module",
-  "private": true,
+  "bin": {
+    "npm-safe": "./index.ts"
+  },
+  "scripts": {
+    "start": "bun ./index.ts",
+    "check": "bunx tsc --noEmit"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "dependencies": {
+    "next-auth": "^4.24.15"
   }
 }

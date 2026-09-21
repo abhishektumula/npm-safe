@@ -1,1 +1,4 @@
-console.log("Hello via Bun!");
+#!/usr/bin/env bun
+import { run } from "./src/cli.ts";
+
+await run(Bun.argv.slice(2));
