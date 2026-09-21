@@ -8,7 +8,7 @@ import { sanitizeTerminal } from "./sanitize.ts";
 import { startSpinner } from "./spinner.ts";
 import type { CliOptions, PackageReport } from "./types.ts";
 
-const VERSION = "0.1.1";
+const VERSION = "0.1.2";
 
 export const INSTALL_VERBS = new Set(["install", "i", "add"]);
 
