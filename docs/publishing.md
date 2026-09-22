@@ -44,12 +44,12 @@ node -e "const p = require('./package.json'); console.log(p.name, p.version, JSO
 
 What each field does:
 
-| Field | Value | Why |
-|---|---|---|
-| `name` | `npm-safe` | Registry name (unscoped → public by default) |
-| `bin.nps` | `./dist/index.js` | Installed command. Points at the **built** bundle — never at `./index.ts`, so it runs under plain Node, not just Bun |
-| `files` | `["dist", "README.md"]` | Tarball allowlist: only the bundle + readme ship |
-| `prepublishOnly` | `bun run build` | Rebuilds `dist/` automatically on every `npm publish` |
+| Field            | Value                   | Why                                                                                                                  |
+| ---------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `name`           | `npm-safe`              | Registry name (unscoped → public by default)                                                                         |
+| `bin.nps`        | `./dist/index.js`       | Installed command. Points at the **built** bundle — never at `./index.ts`, so it runs under plain Node, not just Bun |
+| `files`          | `["dist", "README.md"]` | Tarball allowlist: only the bundle + readme ship                                                                     |
+| `prepublishOnly` | `bun run build`         | Rebuilds `dist/` automatically on every `npm publish`                                                                |
 
 ## 3. Sync the version
 
@@ -185,11 +185,11 @@ A GAT with bypass-2FA does **not** bypass approval-time 2FA. Details:
 
 ## Troubleshooting
 
-| Error | Cause → fix |
-|---|---|
-| `E403 ... --access public` / `402 Payment Required` | Scoped name without public access → add `--access public`; or you lack rights to that scope |
-| `E404` on `npm view` after publish | Name taken by someone else, or replication lag — wait a minute and retry |
-| `E403 cannot publish over previously published version` | Bump `version` (step 3); registry versions are immutable |
-| OTP / `E401` at publish | 2FA prompt — enter the authenticator code; for headless, use a GAT (step 0/6) |
-| `EACCES` on `npm install -g` | Global prefix not writable → [fix perms](https://docs.npmjs.com/resolving-eacces-permissions-errors-when-installing-packages-globally), never `sudo npm` |
-| Stale `nps` after `bun link` (dev only) | Linked bins point at `dist/` — rerun `bun run build` after every change |
+| Error                                                   | Cause → fix                                                                                                                                              |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `E403 ... --access public` / `402 Payment Required`     | Scoped name without public access → add `--access public`; or you lack rights to that scope                                                              |
+| `E404` on `npm view` after publish                      | Name taken by someone else, or replication lag — wait a minute and retry                                                                                 |
+| `E403 cannot publish over previously published version` | Bump `version` (step 3); registry versions are immutable                                                                                                 |
+| OTP / `E401` at publish                                 | 2FA prompt — enter the authenticator code; for headless, use a GAT (step 0/6)                                                                            |
+| `EACCES` on `npm install -g`                            | Global prefix not writable → [fix perms](https://docs.npmjs.com/resolving-eacces-permissions-errors-when-installing-packages-globally), never `sudo npm` |
+| Stale `nps` after `bun link` (dev only)                 | Linked bins point at `dist/` — rerun `bun run build` after every change                                                                                  |
