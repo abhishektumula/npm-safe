@@ -108,6 +108,11 @@ Private registries: `--registry`, `.npmrc` (`registry`,
 `@scope:registry`, `//host/:_authToken` with `${VAR}`), or `NPM_TOKEN` —
 for intel and install alike.
 
+Intel is cached (memory + disk, 24h TTL) so repeat installs return in
+single-digit ms with zero network — first run warms the cache. Multiple
+packages fetch in parallel with shared dedup. Disable with
+`NPS_NO_CACHE=1`, override the dir with `NPS_CACHE_DIR`.
+
 ## Privacy
 
 Inspecting a package sends its name to the registry (metadata) and

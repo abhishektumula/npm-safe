@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { run } from "../src/cli.ts";
 import { stripAnsi } from "./helper.ts";
+import { clearIntelCache } from "../src/cache.ts";
+import { clearNpmInflight } from "../src/npm.ts";
+import { clearHealthInflight } from "../src/snyk.ts";
+import { clearDepsCache } from "../src/deps.ts";
 
 const realFetch = globalThis.fetch;
 const realLog = console.log;
@@ -13,6 +17,10 @@ beforeEach(() => {
   logs = [];
   errors = [];
   process.exitCode = 0;
+  clearIntelCache();
+  clearNpmInflight();
+  clearHealthInflight();
+  clearDepsCache();
   console.log = (...args: unknown[]) => {
     logs.push(args.map(String).join(" "));
   };

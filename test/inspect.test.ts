@@ -1,7 +1,18 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { inspectOne, inspectPackages } from "../src/inspect.ts";
+import { clearIntelCache } from "../src/cache.ts";
+import { clearNpmInflight } from "../src/npm.ts";
+import { clearHealthInflight } from "../src/snyk.ts";
+import { clearDepsCache } from "../src/deps.ts";
 
 const realFetch = globalThis.fetch;
+
+beforeEach(() => {
+  clearIntelCache();
+  clearNpmInflight();
+  clearHealthInflight();
+  clearDepsCache();
+});
 
 afterEach(() => {
   globalThis.fetch = realFetch;

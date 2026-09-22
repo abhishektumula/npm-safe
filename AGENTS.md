@@ -38,8 +38,9 @@ what rules are load-bearing, and exactly when to commit.
 | `src/npm.ts`       | Registry metadata (`/:pkg/latest`, private registries via `npmrc.ts`) | Intel fields, registry handling |
 | `src/npmrc.ts`     | `.npmrc` discovery + `--registry`/`NPM_TOKEN` resolution for intel + Arborist | Private-registry auth |
 | `src/fetch.ts`     | Shared `fetchWithRetry()` (per-attempt timeout, 429/503 backoff) | Intel transport, retry policy |
+| `src/cache.ts`     | Persistent intel cache (memory + disk, 24h TTL, in-flight dedup keys) | Cache TTL, location, disable rules |
 | `src/snyk.ts`      | Snyk health scrape (flags unparsable pages)         | Health source/parsing changes                      |
-| `src/deps.ts`      | Transitive-dep BFS (`CONCURRENCY`, `MAX_NODES`, time/size budgets) | Counting strategy, limits                          |
+| `src/deps.ts`      | Transitive-dep BFS (worker-pool `CONCURRENCY`, `MAX_NODES`, time/size budgets) | Counting strategy, limits                          |
 | `src/spec.ts`      | Spec parsing (`splitSpec`) + scope-safe encoding (`encodePkg`) + registry-vs-non-registry classification (`isRegistrySpec`) + name allowlist (`isValidPkgName`) | Package-spec syntax |
 | `src/render.ts`    | Full card vs compact row, badges (sanitizes via `sanitize.ts`) | Display layout                                     |
 | `src/sanitize.ts`  | `sanitizeTerminal()` — strips ESC/OSC/C0/C1/bidi from untrusted text | Terminal-injection hardening                       |

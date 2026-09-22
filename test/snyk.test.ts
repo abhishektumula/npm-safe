@@ -1,7 +1,13 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { fetchHealth, MAX_HTML_BYTES } from "../src/snyk.ts";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { fetchHealth, MAX_HTML_BYTES, clearHealthInflight } from "../src/snyk.ts";
+import { clearIntelCache } from "../src/cache.ts";
 
 const realFetch = globalThis.fetch;
+
+beforeEach(() => {
+  clearIntelCache();
+  clearHealthInflight();
+});
 
 afterEach(() => {
   globalThis.fetch = realFetch;

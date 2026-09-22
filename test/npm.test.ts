@@ -1,8 +1,16 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { fetchNpmMeta } from "../src/npm.ts";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { fetchNpmMeta, clearNpmInflight } from "../src/npm.ts";
+import { clearIntelCache } from "../src/cache.ts";
+import { clearDepsCache } from "../src/deps.ts";
 
 const realFetch = globalThis.fetch;
 const realToken = process.env.NPM_TOKEN;
+
+beforeEach(() => {
+  clearIntelCache();
+  clearNpmInflight();
+  clearDepsCache();
+});
 
 afterEach(() => {
   globalThis.fetch = realFetch;

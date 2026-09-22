@@ -36,6 +36,8 @@ bun run check && bun test --coverage   # green + ≥90% or add tests
    failure so one dead source can't kill the screen). Route HTTP through
    `fetchWithRetry()` from `src/fetch.ts` (per-attempt timeout, one
    429/503 retry honoring `Retry-After`) instead of raw `fetch()`.
+   Cache successes in `src/cache.ts` (`getCache`/`setCache`, 24h TTL) with
+   a module-level in-flight map so concurrent callers share one fetch.
 2. **Type it** — extend the interfaces in `src/types.ts`
    (`NpmMeta`, `Health`, or `PackageReport`).
 3. **Wire it** — call it in `inspectOne()` inside `src/inspect.ts`,

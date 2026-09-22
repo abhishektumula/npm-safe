@@ -1,7 +1,15 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { countTransitive } from "../src/deps.ts";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { countTransitive, clearDepsCache } from "../src/deps.ts";
+import { clearIntelCache } from "../src/cache.ts";
+import { clearNpmInflight } from "../src/npm.ts";
 
 const realFetch = globalThis.fetch;
+
+beforeEach(() => {
+  clearIntelCache();
+  clearDepsCache();
+  clearNpmInflight();
+});
 
 afterEach(() => {
   globalThis.fetch = realFetch;
