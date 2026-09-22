@@ -388,7 +388,7 @@ export async function run(argv: string[]): Promise<void> {
       console.log(paint(c.dim, "  ◌ aborted. nothing installed."));
       return;
     }
-    // Orb spinner while the engine works — Arborist is silent, so the old
+    // Dots spinner while the engine works — Arborist is silent, so the old
     // static `▶` line felt frozen on slow installs.
     const spinner = startSpinner(`installing project dependencies via ${engineFor(pm)}`);
     try {
@@ -406,7 +406,7 @@ export async function run(argv: string[]): Promise<void> {
     return;
   }
 
-  // Animated orb while registry + snyk + dep crawl run — the old static
+  // Animated dots while registry + snyk + dep crawl run — the old static
   // line felt frozen on slow networks. --json stays silent (machine-readable).
   let reports: PackageReport[];
   if (opts.json) {
@@ -486,7 +486,7 @@ export async function run(argv: string[]): Promise<void> {
     console.log(paint(c.dim, "  ◌ aborted. nothing installed."));
     return;
   }
-  // Orb spinner while the engine works — same frozen-static-line problem as
+  // Dots spinner while the engine works — same frozen-static-line problem as
   // the intel wait above. Succeed/fail lines carry the engine's message.
   const spinner = startSpinner(`installing ${installable.join(", ")} via ${engineFor(pm)}`);
   try {
