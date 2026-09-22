@@ -80,4 +80,4 @@ from another clone: unlink it and re-link from the right directory.
    (`git tag vX.Y.Z`) **only when explicitly asked** — never push or
    open PRs unasked.
 8. `npm publish --access public`, then sanity-install in a scratch dir:
-   `npm i -g npm-safe && nps --version`.
+    `npm install -g @hort/nps && nps --version`.
