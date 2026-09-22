@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
-  ORB_COLORS,
-  ORB_FRAMES,
-  orbFrame,
+  SPINNER_FRAMES,
+  spinnerFrame,
   spinnerLine,
   startSpinner,
 } from "../src/spinner.ts";
@@ -24,25 +23,23 @@ function text(writes: string[]): string {
   return stripAnsi(writes.join(""));
 }
 
-describe("orbFrame", () => {
-  test("cycles shapes and colors, wraps around", () => {
-    expect(ORB_FRAMES.length).toBeGreaterThan(1);
-    expect(ORB_COLORS.length).toBeGreaterThan(1);
-    expect(text([orbFrame(0)])).toContain(ORB_FRAMES[0]!);
-    expect(text([orbFrame(ORB_FRAMES.length)])).toContain(ORB_FRAMES[0]!);
-    // Shapes (4) and colors (5) advance together: full cycle is the LCM (20).
-    expect(text([orbFrame(20)])).toBe(text([orbFrame(0)]));
-    expect(text([orbFrame(1)])).not.toBe(text([orbFrame(0)]));
+describe("spinnerFrame", () => {
+  test("cycles the dots, wraps around", () => {
+    expect(SPINNER_FRAMES.length).toBeGreaterThan(1);
+    expect(text([spinnerFrame(0)])).toContain(SPINNER_FRAMES[0]!);
+    expect(text([spinnerFrame(SPINNER_FRAMES.length)])).toContain(SPINNER_FRAMES[0]!);
+    expect(text([spinnerFrame(SPINNER_FRAMES.length)])).toBe(text([spinnerFrame(0)]));
+    expect(text([spinnerFrame(1)])).not.toBe(text([spinnerFrame(0)]));
   });
   test("handles negative ticks", () => {
-    expect(text([orbFrame(-1)])).toContain(ORB_FRAMES[ORB_FRAMES.length - 1]!);
+    expect(text([spinnerFrame(-1)])).toContain(SPINNER_FRAMES[SPINNER_FRAMES.length - 1]!);
   });
 });
 
 describe("spinnerLine", () => {
   test("carries frame and label", () => {
-    const line = text([spinnerLine("◐", "fetching intel")]);
-    expect(line).toContain("◐");
+    const line = text([spinnerLine("⠋", "fetching intel")]);
+    expect(line).toContain("⠋");
     expect(line).toContain("fetching intel");
   });
 });
@@ -128,7 +125,7 @@ describe("startSpinner (animated)", () => {
     s2.stop();
     expect(writes.length).toBeGreaterThan(0);
   });
-  test("ticks advance the orb while running", async () => {
+  test("ticks advance the dots while running", async () => {
     const { stream, writes } = fakeStream(true);
     const s = startSpinner("working", { stream, enabled: true, intervalMs: 10 });
     try {

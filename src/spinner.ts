@@ -1,25 +1,21 @@
-// Animated orb spinner for long waits (intel fetch, installs).
-// While TTY-attached the orb tumbles through shapes + colors on one line
-// (`\r` rewrite); otherwise a static line is printed once so CI/logs stay
-// readable. No `Bun.*` APIs — runs under Node ≥18 and Bun. Frame helpers
-// are pure for tests; the interval driver is thin by design.
+// Animated spinner for long waits (intel fetch, installs).
+// Same look as the default spinner in ora and most CLIs: braille dots
+// cycling on one line (`\r` rewrite) in cyan. Non-TTY / `TERM=dumb`
+// falls back to a static line so CI/logs stay readable. No `Bun.*`
+// APIs — runs under Node ≥18 and Bun. Frame helpers are pure for
+// tests; the interval driver is thin by design.
 import { c, paint } from "./colors.ts";
 
-/** Orb phases, one per tick — the shape appears to tumble. */
-export const ORB_FRAMES = ["◐", "◓", "◑", "◒"];
-
-/** Color cycle, one step per tick — the orb drifts through the palette. */
-export const ORB_COLORS = [c.pink, c.cyan, c.violet, c.teal, c.lime];
+/** Braille dots, one per tick — the cli-spinners "dots" set (ora's default). */
+export const SPINNER_FRAMES = ["⠋", "⠙", "⠚", "⠞", "⠖", "⠦", "⠴", "⠲", "⠳", "⠓"];
 
 export const SPINNER_INTERVAL_MS = 80;
 
-/** Painted orb for tick `t` (shape and color both advance). Pure for tests. */
-export function orbFrame(tick: number): string {
+/** Painted dots frame for tick `t`. Pure for tests. */
+export function spinnerFrame(tick: number): string {
   const frame =
-    ORB_FRAMES[((tick % ORB_FRAMES.length) + ORB_FRAMES.length) % ORB_FRAMES.length]!;
-  const color =
-    ORB_COLORS[((tick % ORB_COLORS.length) + ORB_COLORS.length) % ORB_COLORS.length]!;
-  return paint(color, frame);
+    SPINNER_FRAMES[((tick % SPINNER_FRAMES.length) + SPINNER_FRAMES.length) % SPINNER_FRAMES.length]!;
+  return paint(c.cyan, frame);
 }
 
 /** Full spinner line for a raw frame + label. Pure for tests. */
@@ -58,7 +54,7 @@ export function startSpinner(label: string, opts: SpinnerOptions = {}): Spinner 
   let settled = false;
 
   const render = (): void => {
-    stream.write(`\r\x1b[K${spinnerLine(orbFrame(tick), text)}`);
+    stream.write(`\r\x1b[K${spinnerLine(spinnerFrame(tick), text)}`);
   };
   const clear = (): void => {
     if (animated) stream.write("\r\x1b[K");

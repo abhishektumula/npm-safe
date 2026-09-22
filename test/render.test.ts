@@ -47,19 +47,32 @@ describe("render full card", () => {
     expect(text).toContain("No known security issues");
   });
   test("failed lookup renders an error row", () => {
-    const text = stripAnsi(render([{ ...report(), meta: null, metaError: "not found" }], false));
+    const text = stripAnsi(
+      render([{ ...report(), meta: null, metaError: "not found" }], false),
+    );
     expect(text).toContain("express");
     expect(text).toContain("not found");
   });
   test("missing health renders n/a", () => {
     const text = stripAnsi(
-      render([{ ...report(), health: { score: null, breakdown: null } }], false),
+      render(
+        [{ ...report(), health: { score: null, breakdown: null } }],
+        false,
+      ),
     );
     expect(text).toContain("n/a (snyk unreachable)");
   });
   test("unparsed health renders a parse-failed warning, not plain n/a", () => {
     const text = stripAnsi(
-      render([{ ...report(), health: { score: null, breakdown: null, unparsed: true } }], false),
+      render(
+        [
+          {
+            ...report(),
+            health: { score: null, breakdown: null, unparsed: true },
+          },
+        ],
+        false,
+      ),
     );
     expect(text).toContain("n/a (snyk parse failed)");
   });
@@ -105,7 +118,9 @@ describe("render showAll", () => {
   });
   test("truncates long transitive lists", () => {
     const names = Array.from({ length: 40 }, (_, i) => `dep-${i}`);
-    const text = stripAnsi(render([{ ...report(), transitiveNames: names }], true));
+    const text = stripAnsi(
+      render([{ ...report(), transitiveNames: names }], true),
+    );
     expect(text).toContain("+10 more");
   });
   test("empty direct deps render as none", () => {
@@ -127,7 +142,10 @@ describe("render compact rows", () => {
   });
   test("compact error rows stay visible", () => {
     const text = stripAnsi(
-      render([report(), report(), { ...report(), meta: null, metaError: "x" }], false),
+      render(
+        [report(), report(), { ...report(), meta: null, metaError: "x" }],
+        false,
+      ),
     );
     expect(text).toContain("x");
   });

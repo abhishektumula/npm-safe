@@ -693,7 +693,7 @@ export async function performPassthrough(
 
 function spawnPm(pm: string, args: string[], cwd: string): Promise<number> {
   // Async spawn (not spawnSync): the event loop must keep turning so the
-  // orb spinner in cli.ts animates while the child runs. stdio stays
+  // dots spinner in cli.ts animates while the child runs. stdio stays
   // inherited, so the child's own progress still paints as before.
   return new Promise((resolve, reject) => {
     let child: ReturnType<typeof spawn>;
