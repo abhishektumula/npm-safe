@@ -20,7 +20,8 @@ export function spinnerFrame(tick: number): string {
 
 /** Full spinner line for a raw frame + label. Pure for tests. */
 export function spinnerLine(frame: string, label: string): string {
-  return `  ${frame} ${paint(c.dim, label)}`;
+  // White, not dim: dim grey is unreadable on translucent/blurred terminals.
+  return `  ${frame} ${paint(c.white, label)}`;
 }
 
 export interface SpinnerOptions {
@@ -61,7 +62,7 @@ export function startSpinner(label: string, opts: SpinnerOptions = {}): Spinner 
   };
 
   if (!animated) {
-    stream.write(paint(c.dim, `  ◌ ${text} …\n`));
+    stream.write(paint(c.white, `  ◌ ${text} …\n`));
   } else {
     render();
     timer = setInterval(() => {
