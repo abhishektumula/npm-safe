@@ -5,6 +5,7 @@ import {
   spinnerLine,
   startSpinner,
 } from "../src/spinner.ts";
+import { c } from "../src/colors.ts";
 import { stripAnsi } from "./helper.ts";
 
 function fakeStream(isTTY = false): { stream: NodeJS.WriteStream; writes: string[] } {
@@ -41,6 +42,9 @@ describe("spinnerLine", () => {
     const line = text([spinnerLine("⠋", "fetching intel")]);
     expect(line).toContain("⠋");
     expect(line).toContain("fetching intel");
+  });
+  test("label uses no dim grey (readability)", () => {
+    expect(spinnerLine("⠋", "fetching intel")).not.toContain(c.dim);
   });
 });
 

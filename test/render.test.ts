@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { COMPACT_THRESHOLD, render } from "../src/render.ts";
+import { c } from "../src/colors.ts";
 import type { PackageReport } from "../src/types.ts";
 import { stripAnsi } from "./helper.ts";
 
@@ -148,5 +149,60 @@ describe("render compact rows", () => {
       ),
     );
     expect(text).toContain("x");
+  });
+  test("compact rows align deps and health columns for uneven names", () => {
+    const short = report();
+    const long = report({
+      query: "much-longer-name",
+      meta: { ...report().meta!, name: "much-longer-name", version: "1.0.0" },
+    });
+    const rows = stripAnsi(render([short, long, report()], false))
+      .split("\n")
+      .filter((line) => line.includes("health"));
+    expect(rows.length).toBe(3);
+    const depIdx = rows.map((line) => line.indexOf("("));
+    expect(new Set(depIdx).size).toBe(1);
+    const healthIdx = rows.map((line) => line.indexOf("health"));
+    expect(new Set(healthIdx).size).toBe(1);
+  });
+  test("compact rows use a bullet marker, not the diamond", () => {
+    const rows = stripAnsi(render([report(), report(), report()], false))
+      .split("\n")
+      .filter((line) => line.includes("health"));
+    expect(rows.length).toBe(3);
+    for (const row of rows) {
+      expect(row).toContain("•");
+      expect(row).not.toContain("◆");
+    }
+  });
+  test("fetched-in timing renders on the card", () => {
+    const text = stripAnsi(render([report()], false));
+    expect(text).toContain("fetched in 42ms");
+  });
+  test("long descriptions truncate with an ellipsis, short ones stay whole", () => {
+    const r = report();
+    r.meta = { ...r.meta!, description: "x".repeat(500) };
+    const text = stripAnsi(render([r], false));
+    expect(text).toContain("…");
+    expect(text).not.toContain("x".repeat(500));
+    expect(stripAnsi(render([report()], false))).toContain("Fast web framework");
+  });
+  test("no dim grey anywhere in cards or rows (readability)", () => {
+    const r = report();
+    r.health.breakdown = {
+      security: "Something entirely new",
+      popularity: "Something entirely new",
+      maintenance: "Something entirely new",
+      community: "Something entirely new",
+    };
+    const outputs = [
+      render([report()], false),
+      render([report()], true),
+      render([report(), report(), report()], false),
+      render([{ ...report(), meta: null, metaError: "x" }], false),
+      render([{ ...report(), health: { score: null, breakdown: null } }], false),
+      render([r], false),
+    ];
+    for (const out of outputs) expect(out).not.toContain(c.dim);
   });
 });
