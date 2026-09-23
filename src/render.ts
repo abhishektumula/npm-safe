@@ -44,11 +44,7 @@ export function render(reports: PackageReport[], showAll: boolean): string {
   const widths = compact ? compactWidths(reports) : null;
   const out: string[] = [];
   out.push("");
-<<<<<<< HEAD
-  out.push(paint(c.pink, "  ◆ nps") + paint(c.dim, "  package intel before you install"));
-=======
-  out.push(paint(c.pink, "  ◆ npms") + paint(c.cyan, "  package intel before you install"));
->>>>>>> fix/ui
+  out.push(paint(c.pink, "  ◆ nps") + paint(c.cyan, "  package intel before you install"));
   out.push(rule);
   for (const r of reports) {
     out.push(compact ? compactRow(r, widths) : fullCard(r, showAll));
