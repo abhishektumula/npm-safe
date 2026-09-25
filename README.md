@@ -101,6 +101,22 @@ then the `packageManager` field, defaulting to `npm`. Override with `--pm`.
 
 `run`, `test`, `exec`, `remove`, … always pass straight through.
 
+To opt out of a manager per project, add `nps.config.json` next to
+`package.json` (every manager is enabled unless listed with
+`"enabled": false`):
+
+```json
+{
+  "packageManagers": {
+    "brew": { "enabled": false }
+  }
+}
+```
+
+A disabled manager fails fast with `package manager "brew" is disabled`
+before any intel or install — including via `--pm`. Missing, malformed,
+or mistyped config fails open to all enabled.
+
 `--dev` is a no-op for `brew`. Health under 40/100, unreachable, or
 unparsable prints a warning before the prompt — never blocks.
 

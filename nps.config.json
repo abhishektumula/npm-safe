@@ -1,0 +1,9 @@
+{
+  "packageManagers": {
+    "bun": { "enabled": true },
+    "pnpm": { "enabled": true },
+    "npm": { "enabled": true },
+    "yarn": { "enabled": true },
+    "brew": { "enabled": false }
+  }
+}

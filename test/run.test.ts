@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { run } from "../src/cli.ts";
 import { stripAnsi } from "./helper.ts";
 import { clearIntelCache } from "../src/cache.ts";
 import { clearNpmInflight } from "../src/npm.ts";
 import { clearHealthInflight } from "../src/snyk.ts";
 import { clearDepsCache } from "../src/deps.ts";
+import { clearPmConfigCache } from "../src/pmconfig.ts";
 
 const realFetch = globalThis.fetch;
 const realLog = console.log;
@@ -21,6 +25,7 @@ beforeEach(() => {
   clearNpmInflight();
   clearHealthInflight();
   clearDepsCache();
+  clearPmConfigCache();
   console.log = (...args: unknown[]) => {
     logs.push(args.map(String).join(" "));
   };
@@ -221,9 +226,36 @@ describe("run", () => {
     expect(process.exitCode).toBe(0);
   });
   test("--workspace with brew errors", async () => {
-    await run(["add", "pkgr1", "--workspace", "api", "--dry-run", "--pm", "brew"]);
-    expect(output()).toContain("not supported with brew");
-    expect(process.exitCode).toBe(1);
+    // Runs in a config-free temp dir: the repo root disables brew via its
+    // own nps.config.json, which would fail before reaching this guard.
+    const prev = process.cwd();
+    const dir = mkdtempSync(join(tmpdir(), "nps-run-brew-"));
+    process.chdir(dir);
+    try {
+      await run(["add", "pkgr1", "--workspace", "api", "--dry-run", "--pm", "brew"]);
+      expect(output()).toContain("not supported with brew");
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.chdir(prev);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  test("disabled manager fails before intel", async () => {
+    const prev = process.cwd();
+    const dir = mkdtempSync(join(tmpdir(), "nps-run-disabled-"));
+    writeFileSync(
+      join(dir, "nps.config.json"),
+      JSON.stringify({ packageManagers: { bun: { enabled: false } } }),
+    );
+    process.chdir(dir);
+    try {
+      await run(["add", "pkgr1", "--dry-run", "--pm", "bun"]);
+      expect(output()).toContain('package manager "bun" is disabled');
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.chdir(prev);
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
   test("--registry reaches the binary plan and status line", async () => {
     stubRegistry(["pkgr1"]);

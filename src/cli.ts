@@ -242,7 +242,9 @@ export function helpText(): string {
     one workspace package on every manager (same command, same target);
     --filter stays binary-only and is rejected on the npm/yarn engines.
     Scores under 40/100 (or unavailable health) print a warning first —
-    advisory only, nps never blocks.
+    advisory only, nps never blocks. nps.config.json { "packageManagers":
+    { "<name>": { "enabled": false } } } opts individual managers out
+    (disabled managers fail before any intel).
 `;
 }
 

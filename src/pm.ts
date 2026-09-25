@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { CONFIG_FILE, isPmEnabled, loadPmConfig } from "./pmconfig.ts";
 
 export type Pm = "bun" | "pnpm" | "npm" | "yarn" | "brew";
 
@@ -28,6 +29,8 @@ export function isSupportedPm(value: string): value is Pm {
 // then npm. Brew is never auto-selected (not a JS installer); --pm brew
 // is opt-in.
 export function detectPm(override: string | null): { pm: Pm; via: string } {
+  const cwd = process.cwd();
+  let result: { pm: Pm; via: string };
   if (override) {
     const pm = override.toLowerCase();
     // Fail fast on unknown managers: the engines also guard, but routing
@@ -38,17 +41,27 @@ export function detectPm(override: string | null): { pm: Pm; via: string } {
         `unsupported package manager: "${override}" (supported: ${ALL_PMS.join(", ")})`,
       );
     }
-    return { pm, via: "flag --pm" };
+    result = { pm, via: "flag --pm" };
+  } else if (existsSync(join(cwd, "pnpm-lock.yaml"))) {
+    result = { pm: "pnpm", via: "pnpm-lock.yaml" };
+  } else if (existsSync(join(cwd, "yarn.lock"))) {
+    result = { pm: "yarn", via: "yarn.lock" };
+  } else if (existsSync(join(cwd, "package-lock.json"))) {
+    result = { pm: "npm", via: "package-lock.json" };
+  } else if (existsSync(join(cwd, "bun.lock")) || existsSync(join(cwd, "bun.lockb"))) {
+    result = { pm: "bun", via: "bun.lock" };
+  } else {
+    const fromField = readPackageManagerField(cwd);
+    result = fromField ? { pm: fromField, via: "packageManager field" } : { pm: "npm", via: "default" };
   }
-  const cwd = process.cwd();
-  if (existsSync(join(cwd, "pnpm-lock.yaml"))) return { pm: "pnpm", via: "pnpm-lock.yaml" };
-  if (existsSync(join(cwd, "yarn.lock"))) return { pm: "yarn", via: "yarn.lock" };
-  if (existsSync(join(cwd, "package-lock.json"))) return { pm: "npm", via: "package-lock.json" };
-  if (existsSync(join(cwd, "bun.lock")) || existsSync(join(cwd, "bun.lockb")))
-    return { pm: "bun", via: "bun.lock" };
-  const fromField = readPackageManagerField(cwd);
-  if (fromField) return { pm: fromField, via: "packageManager field" };
-  return { pm: "npm", via: "default" };
+  // nps.config.json opt-outs apply to every route — flag, lockfile, field,
+  // default. Disabled managers fail here, before any intel or install.
+  if (!isPmEnabled(result.pm, loadPmConfig(cwd))) {
+    throw new PmError(
+      `package manager "${result.pm}" is disabled (${CONFIG_FILE} > packageManagers > ${result.pm})`,
+    );
+  }
+  return result;
 }
 
 function readPackageManagerField(cwd: string): Pm | null {

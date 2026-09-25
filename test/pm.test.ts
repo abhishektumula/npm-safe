@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { detectPm, isSupportedPm, PmError, type Pm } from "../src/pm.ts";
+import { clearPmConfigCache } from "../src/pmconfig.ts";
 
 let prevCwd = "";
 
@@ -17,6 +18,7 @@ function chdirTmp(files: Record<string, string> = {}): string {
 }
 
 afterEach(() => {
+  clearPmConfigCache();
   if (prevCwd) {
     const dir = process.cwd();
     process.chdir(prevCwd);
@@ -78,9 +80,35 @@ describe("detectPm", () => {
     expect(() => detectPm("wat")).toThrow(/supported: bun, pnpm, npm, yarn, brew/);
   });
   test("override is case-insensitive; brew is flag-only", () => {
+    // Isolated temp dir: the repo root's own nps.config.json disables brew.
+    chdirTmp();
     expect(detectPm("Bun")).toEqual({ pm: "bun", via: "flag --pm" });
     expect(detectPm("brew")).toEqual({ pm: "brew", via: "flag --pm" });
     expect(isSupportedPm("brew")).toBe(true);
     expect(isSupportedPm("sh")).toBe(false);
+  });
+  test("disabled manager throws, including via --pm override", () => {
+    chdirTmp({ "nps.config.json": JSON.stringify({ packageManagers: { brew: { enabled: false } } }) });
+    expect(() => detectPm("brew")).toThrow(PmError);
+    expect(() => detectPm("brew")).toThrow(/disabled \(nps\.config\.json/);
+    // Enabled managers keep working under the same config.
+    expect(detectPm("npm")).toEqual({ pm: "npm", via: "flag --pm" });
+  });
+  test("disabled manager throws when reached via lockfile detection", () => {
+    chdirTmp({
+      "yarn.lock": "",
+      "nps.config.json": JSON.stringify({ packageManagers: { yarn: { enabled: false } } }),
+    });
+    expect(() => detectPm(null)).toThrow(/"yarn" is disabled/);
+  });
+  test("explicit enabled:true keeps the manager routed", () => {
+    chdirTmp({
+      "nps.config.json": JSON.stringify({ packageManagers: { brew: { enabled: true } } }),
+    });
+    expect(detectPm("brew")).toEqual({ pm: "brew", via: "flag --pm" });
+  });
+  test("malformed config fails open to all enabled", () => {
+    chdirTmp({ "nps.config.json": "{not json" });
+    expect(detectPm("brew")).toEqual({ pm: "brew", via: "flag --pm" });
   });
 });

@@ -35,6 +35,7 @@ what rules are load-bearing, and exactly when to commit.
 | `src/prompt.ts`    | Single-keypress `[y/N]` confirm (raw mode, readline fallback) + pure `parseConfirmAnswer()` | Prompt UX |
 | `src/install.ts`   | **Only file allowed to install/run packages.** Per-PM engines behind `performInstall` / `performPassthrough` | Any install or spawn behavior |
 | `src/pm.ts`        | Detecting which manager owns `cwd` (lockfiles → `packageManager` field → npm default) | Detection rules only |
+| `src/pmconfig.ts`  | `nps.config.json` enable/disable (`packageManagers.<name>.enabled`, fail-open, cached per cwd) | Config shape, defaults, disable rules |
 | `src/npm.ts`       | Registry metadata (`/:pkg/latest`, private registries via `npmrc.ts`) | Intel fields, registry handling |
 | `src/npmrc.ts`     | `.npmrc` discovery + `--registry`/`NPM_TOKEN` resolution for intel + Arborist | Private-registry auth |
 | `src/fetch.ts`     | Shared `fetchWithRetry()` (per-attempt timeout, 429/503 backoff) | Intel transport, retry policy |
