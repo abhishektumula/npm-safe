@@ -44,7 +44,7 @@ jobs:
       # before ESM detection only treat dist/index.js as ESM when a package.json
       # above it says so, exactly like the published package layout.
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist
