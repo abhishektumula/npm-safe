@@ -25,7 +25,7 @@ jobs:
       # micromatch in @yarnpkg/*); ignore only that advisory so new vulns still fail.
       - run: bun audit --ignore GHSA-vfj7-8cjw-p6xm
       - run: bun run build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
