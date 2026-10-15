@@ -14,7 +14,9 @@ function stubSequence(responses: Array<{ status: number; body?: string; retryAft
     return {
       status: next.status,
       ok: next.status >= 200 && next.status < 300,
-      headers: { get: (name: string) => (name === "retry-after" ? (next.retryAfter ?? null) : null) },
+      headers: {
+        get: (name: string) => (name === "retry-after" ? (next.retryAfter ?? null) : null),
+      },
       text: async () => next.body ?? "",
     };
   }) as unknown as typeof fetch;
@@ -40,7 +42,11 @@ describe("fetchWithRetry", () => {
   });
   test("gives up after maxAttempts", async () => {
     const calls = stubSequence([{ status: 503, retryAfter: "0" }]);
-    const res = await fetchWithRetry("https://x.example", {}, { maxAttempts: 3, defaultBackoffMs: 1 });
+    const res = await fetchWithRetry(
+      "https://x.example",
+      {},
+      { maxAttempts: 3, defaultBackoffMs: 1 },
+    );
     expect(res.status).toBe(503);
     expect(calls()).toBe(3);
   });

@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getCache, setCache, clearIntelCache, getCacheFile, persistIntelCacheSync } from "../src/cache.ts";
+import {
+  getCache,
+  setCache,
+  clearIntelCache,
+  getCacheFile,
+  persistIntelCacheSync,
+} from "../src/cache.ts";
 import { fetchNpmMeta, clearNpmInflight } from "../src/npm.ts";
 import { fetchHealth, clearHealthInflight } from "../src/snyk.ts";
 import { countTransitive, clearDepsCache } from "../src/deps.ts";
@@ -119,7 +125,11 @@ describe("intel cache", () => {
     globalThis.fetch = (async (url: string | URL | Request) => {
       const u = String(url);
       if (u.includes("security.snyk.io")) {
-        return { status: 200, ok: true, text: async () => `<span class="score-number">70/100</span>` };
+        return {
+          status: 200,
+          ok: true,
+          text: async () => `<span class="score-number">70/100</span>`,
+        };
       }
       return {
         status: 200,
@@ -144,7 +154,14 @@ describe("parallel intel", () => {
     globalThis.fetch = (async (url: string | URL | Request) => {
       const u = String(url);
       if (u.includes("security.snyk.io")) {
-        return { status: 200, ok: true, text: async () => `<span class="score-number">80/100</span>` };
+        return {
+          status: 200,
+          ok: true,
+          text: async () => `<span class="score-number">80/100</span>`,
+        };
+      }
+      if (u.includes("api.osv.dev") || u.includes("api.npmjs.org")) {
+        return { status: 200, ok: true, text: async () => "{}" };
       }
       calls++;
       active++;

@@ -28,7 +28,9 @@ afterEach(() => {
 
 describe("parsePmConfig", () => {
   test("structured entries are normalized", () => {
-    expect(parsePmConfig({ packageManagers: { brew: { enabled: false }, " Yarn ": { enabled: true } } })).toEqual({
+    expect(
+      parsePmConfig({ packageManagers: { brew: { enabled: false }, " Yarn ": { enabled: true } } }),
+    ).toEqual({
       packageManagers: { brew: { enabled: false }, yarn: { enabled: true } },
     });
   });

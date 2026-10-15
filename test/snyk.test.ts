@@ -78,7 +78,9 @@ describe("fetchHealth", () => {
     globalThis.fetch = (async () => ({
       status: 200,
       ok: true,
-      headers: { get: (name: string) => (name === "content-length" ? String(MAX_HTML_BYTES + 1) : null) },
+      headers: {
+        get: (name: string) => (name === "content-length" ? String(MAX_HTML_BYTES + 1) : null),
+      },
       text: async () => {
         textCalled = true;
         return "should never be read";

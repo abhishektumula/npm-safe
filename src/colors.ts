@@ -19,8 +19,22 @@ export const c = {
   teal: `${ESC}38;5;80m`,
 };
 
+let forcedOff = false;
+
+/** `--no-color` / non-TTY stdout: turn all painting off for this process. */
+export function setColorEnabled(on: boolean): void {
+  forcedOff = !on;
+}
+
+/** NO_COLOR (any non-empty value, https://no-color.org) or an explicit off switch. */
+export function colorEnabled(): boolean {
+  if (forcedOff) return false;
+  const nc = process.env.NO_COLOR;
+  return nc === undefined || nc === "";
+}
+
 export function paint(color: string, text: string): string {
-  return `${color}${text}${c.reset}`;
+  return colorEnabled() ? `${color}${text}${c.reset}` : text;
 }
 
 export function healthColor(score: number): string {

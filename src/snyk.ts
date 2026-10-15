@@ -1,6 +1,8 @@
 import type { Health } from "./types.ts";
 import { fetchWithRetry } from "./fetch.ts";
-import { getCache, healthKey, HEALTH_TTL_MS, setCache } from "./cache.ts";
+import { getCache, getCacheStale, healthKey, HEALTH_TTL_MS, setCache } from "./cache.ts";
+import { vlog } from "./log.ts";
+import { VERSION } from "./version.ts";
 import { encodePkg, isValidPkgName } from "./spec.ts";
 
 /** Scraped HTML is only scanned for small markers: never buffer more. */
@@ -26,17 +28,21 @@ export async function fetchHealth(name: string): Promise<Health> {
   if (!isValidPkgName(name)) return empty;
   const key = healthKey(name);
   const cached = getCache<Health>(key);
-  if (cached) return cached;
+  if (cached) {
+    vlog(`cache hit: ${name} (health)`);
+    return cached;
+  }
   const pending = inflight.get(key);
   if (pending) return pending;
   const p = (async (): Promise<Health> => {
     let html: string;
+    vlog(`cache miss: ${name} (health) -> security.snyk.io`);
     try {
       const res = await fetchWithRetry(
         `https://security.snyk.io/package/npm/${encodePkg(name)}`,
         {
           headers: {
-            "User-Agent": "nps/0.1.0",
+            "User-Agent": `nps/${VERSION}`,
             Accept: "text/html",
           },
         },
@@ -51,6 +57,12 @@ export async function fetchHealth(name: string): Promise<Health> {
       // …and enforce the same cap on the actual body (missing/lying header).
       if (html.length > MAX_HTML_BYTES) return empty;
     } catch {
+      // Offline: an expired parsed score beats "unreachable", labelled stale.
+      const old = getCacheStale<Health>(key);
+      if (old) {
+        vlog(`${name}: snyk unreachable — using stale cache`);
+        return { ...old, stale: true };
+      }
       return empty;
     }
 
@@ -84,9 +96,12 @@ function pick(html: string, label: string): string {
   const labelRe = new RegExp(`criterion-label[^>]*>\\s*${label}\\s*<\\/span>`, "i");
   const match = html.match(labelRe);
   if (!match || match.index === undefined) return "n/a";
-  const afterLabel = html.slice(match.index + match[0].length, match.index + match[0].length + 1000);
+  const afterLabel = html.slice(
+    match.index + match[0].length,
+    match.index + match[0].length + 1000,
+  );
   const spanMatch = afterLabel.match(/<span[^>]*>([\s\S]*?)<\/span>/i);
-  if (!spanMatch || !spanMatch[1]) return "n/a";
+  if (!spanMatch?.[1]) return "n/a";
   const content = spanMatch[1]
     .replace(/<svg[\s\S]*?<\/svg>/gi, "")
     .replace(/<!--[\s\S]*?-->/g, "")

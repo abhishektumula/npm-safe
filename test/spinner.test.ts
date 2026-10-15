@@ -1,10 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  SPINNER_FRAMES,
-  spinnerFrame,
-  spinnerLine,
-  startSpinner,
-} from "../src/spinner.ts";
+import { SPINNER_FRAMES, spinnerFrame, spinnerLine, startSpinner } from "../src/spinner.ts";
 import { c } from "../src/colors.ts";
 import { stripAnsi } from "./helper.ts";
 

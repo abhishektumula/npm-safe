@@ -1,0 +1,19 @@
+{
+  "$schema": "https://biomejs.dev/schemas/latest/schema.json",
+  "files": { "includes": ["index.ts", "src/**", "test/**", "scripts/**"] },
+  "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "suspicious": {
+        "noExplicitAny": "off",
+        "noControlCharactersInRegex": "off",
+        "noTemplateCurlyInString": "off"
+      },
+      "complexity": { "useRegexLiterals": "off" },
+      "style": { "noNonNullAssertion": "off" }
+    }
+  },
+  "assist": { "enabled": false }
+}

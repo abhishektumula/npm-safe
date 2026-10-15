@@ -26,7 +26,11 @@ describe("confirm", () => {
       },
     });
     (input as any).isTTY = true;
-    const output = new Writable({ write(_chunk, _encoding, callback) { callback(); } });
+    const output = new Writable({
+      write(_chunk, _encoding, callback) {
+        callback();
+      },
+    });
     expect(await confirm(input, output)).toBe(true);
   });
 
@@ -38,7 +42,11 @@ describe("confirm", () => {
       },
     });
     (input as any).isTTY = true;
-    const output = new Writable({ write(_chunk, _encoding, callback) { callback(); } });
+    const output = new Writable({
+      write(_chunk, _encoding, callback) {
+        callback();
+      },
+    });
     expect(await confirm(input, output)).toBe(false);
   });
 });

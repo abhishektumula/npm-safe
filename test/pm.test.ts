@@ -88,7 +88,9 @@ describe("detectPm", () => {
     expect(isSupportedPm("sh")).toBe(false);
   });
   test("disabled manager throws, including via --pm override", () => {
-    chdirTmp({ "nps.config.json": JSON.stringify({ packageManagers: { brew: { enabled: false } } }) });
+    chdirTmp({
+      "nps.config.json": JSON.stringify({ packageManagers: { brew: { enabled: false } } }),
+    });
     expect(() => detectPm("brew")).toThrow(PmError);
     expect(() => detectPm("brew")).toThrow(/disabled \(nps\.config\.json/);
     // Enabled managers keep working under the same config.

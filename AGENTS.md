@@ -14,6 +14,7 @@ what rules are load-bearing, and exactly when to commit.
 | Install deps      | `bun install`                    |
 | Run CLI (dev)     | `bun ./index.ts …`               |
 | Typecheck         | `bun run check` (`tsc --noEmit`) |
+| Lint / format     | `bun run lint` / `bun run format` (Biome) |
 | Tests             | `bun test`                       |
 | Coverage          | `bun test --coverage` (≥90%)     |
 | Build (node dist) | `bun run build` → `dist/`        |
@@ -39,21 +40,32 @@ what rules are load-bearing, and exactly when to commit.
 | `src/npm.ts`       | Registry metadata (`/:pkg/latest`, private registries via `npmrc.ts`) | Intel fields, registry handling |
 | `src/npmrc.ts`     | `.npmrc` discovery + `--registry`/`NPM_TOKEN` resolution for intel + Arborist | Private-registry auth |
 | `src/fetch.ts`     | Shared `fetchWithRetry()` (per-attempt timeout, 429/503 backoff) | Intel transport, retry policy |
-| `src/cache.ts`     | Persistent intel cache (memory + disk, 24h TTL, in-flight dedup keys) | Cache TTL, location, disable rules |
+| `src/cache.ts`     | Persistent intel cache (memory + disk, 24h TTL, 7-day stale window for offline fallback, stats/purge) | Cache TTL, location, disable rules |
 | `src/snyk.ts`      | Snyk health scrape (flags unparsable pages)         | Health source/parsing changes                      |
+| `src/osv.ts`       | OSV.dev advisories for name@version (POST, structured JSON) | Advisory source changes                    |
+| `src/signals.ts`   | Local red flags: deprecated, install scripts, typosquat lookalikes; `closest()` for did-you-mean | Signal rules, popular-name list |
+| `src/policy.ts`    | `--min-score` + `nps.config.json` `policy` → `evaluate()` violations (exit 3) | Block rules |
+| `src/commands.ts`  | nps-native commands: `scan`, `doctor`, `cache-clear`, `completions`, `alias` | New non-install commands |
+| `src/completions.ts` | Static bash/zsh/fish scripts + alias snippet      | Command/flag list changes (keep in sync with help) |
+| `src/report.ts`    | Versioned `--json` document (`SCHEMA_VERSION`)      | Output contract (bump version on breaking change)  |
+| `src/exit.ts`      | `EXIT` codes (0 ok, 1 error, 3 blocked, 4 unavailable) | Exit-code contract                              |
+| `src/log.ts`       | `--verbose` logger (stderr only)                    | Diagnostics                                        |
+| `src/version.ts`   | `VERSION` from `package.json` (single source)       | Never hardcode a version elsewhere                 |
 | `src/deps.ts`      | Transitive-dep BFS (worker-pool `CONCURRENCY`, `MAX_NODES`, time/size budgets) | Counting strategy, limits                          |
 | `src/spec.ts`      | Spec parsing (`splitSpec`) + scope-safe encoding (`encodePkg`) + registry-vs-non-registry classification (`isRegistrySpec`) + name allowlist (`isValidPkgName`) | Package-spec syntax |
 | `src/render.ts`    | Full card vs compact row, badges (sanitizes via `sanitize.ts`) | Display layout                                     |
 | `src/sanitize.ts`  | `sanitizeTerminal()` — strips ESC/OSC/C0/C1/bidi from untrusted text | Terminal-injection hardening                       |
-| `src/colors.ts`    | Hand-rolled ANSI (color only, no bold/italic)       | Palette/bar changes                                |
+| `src/colors.ts`    | Hand-rolled ANSI (color only, no bold/italic); `paint()` honors `NO_COLOR` / `--no-color` at call time | Palette/bar changes |
 | `src/types.ts`     | Shared interfaces (`NpmMeta`, `Health`, `PackageReport`, `CliOptions`) | Cross-module contracts |
 | `src/arborist.d.ts`| Minimal ambient types for untyped `@npmcli/arborist` | Engine surface changes |
 | `test/`            | `bun test` suites mirroring `src/`                  | Any behavior change needs a test                   |
 | `docs/`            | Extending/packaging/releasing guides                | Keep in sync with code changes                     |
 
-Data flow: `run()` → `parseArgs()` → per-package `inspectOne()`
-(`fetchNpmMeta` + `fetchHealth` in parallel, then `countTransitive`) →
-`render()` → `detectPm()` → confirm → `performInstall()`.
+Data flow: `run()` → `parseArgs()` → (tool commands → `runTool()`) →
+`detectPm()` → per-package `inspectOne()` (`fetchNpmMeta` + `fetchHealth`
+in parallel, then `countTransitive` + `fetchVulns`) → `render()` (or the
+`--json` document) → `evaluate()` policy gate (exit 3) → confirm →
+`performInstall()`.
 
 ## 3. Engine rules (load-bearing)
 
@@ -98,6 +110,17 @@ Data flow: `run()` → `parseArgs()` → per-package `inspectOne()`
   `@scope:registry`, `//host/:_authToken` with `${VAR}`), `NPM_TOKEN` env.
   All intel fetches go through `fetchWithRetry()`; Arborist gets flat
   `//host/:_authToken` option keys (it never reads `.npmrc` itself).
+- `--json` owns stdout: one document, human lines on stderr, never prompts
+  (without `-y` it reports and stops). Changing its shape bumps
+  `SCHEMA_VERSION` and `docs/json-schema.md`.
+- Policy violations exit 3 and `-y` never bypasses them. Intel failures stay
+  fail-open unless a policy requires the data (`--min-score` treats unknown
+  health as a violation).
+- Passthrough forwards `--verbose`, `--no-cache`, `--no-color`, `--min-score`
+  to the manager verbatim; nps also consumes them.
+- Any module-level `paint()` call is a bug (color is decided at call time).
+- Expired cache entries are only a fallback after a live fetch fails
+  (`getCacheStale`), and results are labelled `stale`.
 - Untrusted text (registry fields, snyk HTML, user queries) is sanitized
   via `sanitizeTerminal()` before painting; spec names pass
   `isValidPkgName()` before any fetch or engine call.
@@ -107,7 +130,8 @@ Data flow: `run()` → `parseArgs()` → per-package `inspectOne()`
 Show per package: name + version, description, author, repo URL,
 direct / transitive / total dep counts, health score `/100` with bar plus
 `security` / `popularity` / `maintenance` / `community` breakdown.
-Intel: `registry.npmjs.org` for metadata, `security.snyk.io` (scraped) for health.
+Intel: `registry.npmjs.org` for metadata, `security.snyk.io` (scraped) for health,
+`api.osv.dev` for advisories, plus local signals from registry metadata.
 Flow: `nps install <pkgs>` → intel cards → `[y/N]` → install with the
 detected manager. Bare `nps install` installs project deps (no intel).
 Non-registry specs skip intel with a warning. Multiple packages in one
@@ -115,8 +139,10 @@ command. 3+ packages (without `-a`) collapse to compact rows:
 `total(direct, transitive)`, no repo URL.
 Flags: `-a/--all` (dep names, transitive sample, license, health detail),
 `-y/--yes`, `-D/--dev`, `-P/--peer`, `-O/--optional`, `-w/--workspace`,
-`--registry`, `--pm`, `--dry-run`, `--json`, `-v`, `-h`. Scores under 40
-or unavailable health warn first (advisory only).
+`-E`, `--registry`, `--pm`, `--min-score`, `--dry-run`, `--json`,
+`--verbose`, `--no-cache`, `--no-color`, `-v`, `-h`. Commands: `check`,
+`scan`, `doctor`, `cache-clear`, `completions`, `alias`. Scores under 40
+or unavailable health warn first (advisory unless a policy is set).
 Keep latency minimal (parallel fetches, bounded BFS), output colorful
 (JetBrainsMono / GeistMono Nerd Font friendly), no UI beyond the terminal.
 
@@ -134,11 +160,16 @@ Keep latency minimal (parallel fetches, bounded BFS), output colorful
 - Coverage gate: **≥90% lines+functions** (`bun test --coverage`).
   If a change drops coverage below the gate, add tests in the same set.
 - Never hit the network in tests: stub `globalThis.fetch`, use temp dirs.
+- Be hermetic: point `HOME` / `NPS_CACHE_DIR` at temp dirs and call
+  `clearNpmrcCache()` when a test reads `.npmrc` or the cache. The api.osv.dev
+  URL is also fetched — stubs must answer it.
 
 ## 7. Docs
 
-- `README.md`: description, install, every command (dev/build/test/
-  package/release), flags, examples.
+- `README.md`: description, install, every command, flags, policy, exit
+  codes, troubleshooting. Dev/test setup lives in `CONTRIBUTING.md`.
+- `CHANGELOG.md`: one line per user-visible change (Unreleased section).
+- `docs/json-schema.md`: the `--json` contract.
 - `docs/extending.md`: how to add a package manager, intel source, or flag.
 - `docs/packaging.md`: bin (`nps`), build, publish, release checklist.
 - Code change without matching doc update = incomplete set.
@@ -149,7 +180,7 @@ Commit **after each finished, verified set** — and only then:
 
 1. **One set = one commit.** A set is a single phase from the plan
    (feature, refactor, tests, docs) that is complete on its own.
-2. **Verify first, always:** `bun run check`, `bun test` (≥90% coverage),
+2. **Verify first, always:** `bun run check`, `bun run lint`, `bun run format:check`, `bun test` (≥90% coverage),
    plus the relevant smoke test from §1. Never commit red output.
 3. **Inspect before staging:** `git status`, `git diff`, `git log --oneline -5`.
    Stage only intended files. Never commit secrets, `.env`, editor dirs,

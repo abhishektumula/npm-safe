@@ -117,6 +117,11 @@ function loadUncached(cwd: string): NpmrcConfig {
 
 const cache = new Map<string, NpmrcConfig>();
 
+/** Drop memoized .npmrc loads (tests; long-lived embedders). */
+export function clearNpmrcCache(): void {
+  cache.clear();
+}
+
 /** Load and merge home + project .npmrc (project wins). Cached per cwd. */
 export function loadNpmrc(cwd: string): NpmrcConfig {
   const hit = cache.get(cwd);
@@ -127,11 +132,7 @@ export function loadNpmrc(cwd: string): NpmrcConfig {
 }
 
 /** Registry URL (no trailing slash) for a package name. */
-export function registryFor(
-  name: string,
-  cfg: NpmrcConfig,
-  override?: string | null,
-): string {
+export function registryFor(name: string, cfg: NpmrcConfig, override?: string | null): string {
   if (override) return override.replace(/\/+$/, "");
   const env = process.env.NPM_CONFIG_REGISTRY ?? process.env.npm_config_registry;
   if (name.startsWith("@")) {

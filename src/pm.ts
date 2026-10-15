@@ -52,7 +52,9 @@ export function detectPm(override: string | null): { pm: Pm; via: string } {
     result = { pm: "bun", via: "bun.lock" };
   } else {
     const fromField = readPackageManagerField(cwd);
-    result = fromField ? { pm: fromField, via: "packageManager field" } : { pm: "npm", via: "default" };
+    result = fromField
+      ? { pm: fromField, via: "packageManager field" }
+      : { pm: "npm", via: "default" };
   }
   // nps.config.json opt-outs apply to every route — flag, lockfile, field,
   // default. Disabled managers fail here, before any intel or install.

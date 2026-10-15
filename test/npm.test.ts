@@ -2,11 +2,21 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { fetchNpmMeta, clearNpmInflight } from "../src/npm.ts";
 import { clearIntelCache } from "../src/cache.ts";
 import { clearDepsCache } from "../src/deps.ts";
+import { clearNpmrcCache } from "../src/npmrc.ts";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const realFetch = globalThis.fetch;
 const realToken = process.env.NPM_TOKEN;
+const realHome = process.env.HOME;
+let fakeHome = "";
 
 beforeEach(() => {
+  // Hermetic: a developer's real ~/.npmrc token must not leak into tests.
+  fakeHome = mkdtempSync(join(tmpdir(), "nps-npm-home-"));
+  process.env.HOME = fakeHome;
+  clearNpmrcCache();
   clearIntelCache();
   clearNpmInflight();
   clearDepsCache();
@@ -14,6 +24,10 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = realFetch;
+  if (realHome === undefined) delete process.env.HOME;
+  else process.env.HOME = realHome;
+  rmSync(fakeHome, { recursive: true, force: true });
+  clearNpmrcCache();
   if (realToken === undefined) delete process.env.NPM_TOKEN;
   else process.env.NPM_TOKEN = realToken;
 });
@@ -86,7 +100,7 @@ describe("fetchNpmMeta", () => {
   });
   test("404 throws not-found", async () => {
     stubFetch({}, 404);
-    await expect(fetchNpmMeta("nope")).rejects.toThrow('not found (//registry.npmjs.org/)');
+    await expect(fetchNpmMeta("nope")).rejects.toThrow("not found (//registry.npmjs.org/)");
   });
   test("5xx throws with status", async () => {
     stubFetch({}, 500);

@@ -32,7 +32,7 @@ function sleep(ms: number): Promise<void> {
 
 export async function fetchWithRetry(
   url: string,
-  init: { headers?: Record<string, string> } = {},
+  init: { headers?: Record<string, string>; method?: string; body?: string } = {},
   options: FetchRetryOptions = {},
 ): Promise<Response> {
   const opts: Required<FetchRetryOptions> = {
@@ -45,7 +45,12 @@ export async function fetchWithRetry(
   for (let attempt = 1; attempt <= opts.maxAttempts; attempt++) {
     let res: Response;
     try {
-      res = await fetch(url, { headers: init.headers, signal: AbortSignal.timeout(opts.timeoutMs) });
+      res = await fetch(url, {
+        headers: init.headers,
+        ...(init.method ? { method: init.method } : {}),
+        ...(init.body !== undefined ? { body: init.body } : {}),
+        signal: AbortSignal.timeout(opts.timeoutMs),
+      });
     } catch (err) {
       lastError = err;
       break; // network/timeout: callers already degrade gracefully; don't spin

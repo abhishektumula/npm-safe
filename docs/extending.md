@@ -48,6 +48,12 @@ bun run check && bun test --coverage   # green + ≥90% or add tests
    hostile package can't inject terminal escape sequences.
 5. **Test it** — `test/<source>.test.ts` by stubbing `globalThis.fetch`
    (success mapping, 404, 500, throw). Never hit the network in tests.
+   Existing stubs must answer the new URL too (see `api.osv.dev` handling in
+   `test/cache.test.ts`).
+6. **Offline + JSON** — fall back with `getCacheStale()` only after a live
+   failure and label the result `stale`; add the field to `docs/json-schema.md`.
+   `src/osv.ts` is the reference implementation (POST + structured JSON);
+   `src/policy.ts` shows how a source becomes a blocking rule.
 
 ## Add a flag (e.g. `--pin`)
 
@@ -57,7 +63,17 @@ bun run check && bun test --coverage   # green + ≥90% or add tests
 2. **Honor it** — where the flag takes effect (`performInstall()` engines,
    `render()`, …). Engines map known flags and report the rest ignored;
    binary installers forward `extraArgs` verbatim.
-3. **Document it** — `helpText()` table, `README.md` flags table.
+3. **Document it** — `helpText()` table, `README.md` flags table,
+   `src/completions.ts` `FLAGS`, and a `CHANGELOG.md` line.
+   A flag that must also reach the package manager on passthrough should be
+   pushed onto `kept` in `parseArgs()` (see `--verbose`).
+
+## Add a command (e.g. `nps why`)
+
+1. Add the word to `TOOL_CMDS` and a `case` in `runTool()` (`src/commands.ts`);
+   return an `EXIT` code. Tool commands run before manager detection.
+2. List it in `helpText()` and `COMMANDS` in `src/completions.ts`, then the
+   README commands table. Test it in `test/commands.test.ts`.
 4. **Test it** — `test/cli.test.ts` (parsing) + the suite of whatever
    module honors it.
 

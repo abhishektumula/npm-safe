@@ -1,0 +1,36 @@
+# Live canary: the intel sources are third-party (registry, Snyk HTML, OSV).
+# Weekly, run the real bundle against them and fail when a parser breaks, so
+# a Snyk layout change is noticed here instead of by users.
+name: smoke
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  live-intel:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - run: node dist/index.js doctor
+      - name: health + advisories parse for a known package
+        run: |
+          node dist/index.js check left-pad --pm npm --json > report.json
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync("report.json", "utf8")).packages[0];
+            const bad = [];
+            if (!r.meta) bad.push("registry metadata missing");
+            if (r.health.score === null) bad.push("snyk health did not parse (layout change?)");
+            if (r.vulns === null) bad.push("osv unreachable");
+            if (bad.length) { console.error(bad.join("\n")); process.exit(1); }
+            console.log("ok", r.meta.name, r.meta.version, r.health.score + "/100");
+          '

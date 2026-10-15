@@ -324,10 +324,7 @@ describe("yarn engine dry-runs (no network: ranged specs only)", () => {
   test("ranged spec resolves the plan without touching disk", async () => {
     const dir = yarnDir(true);
     try {
-      const res = await performInstall(
-        "yarn",
-        req({ cwd: dir, packages: ["left-pad@^1"] }),
-      );
+      const res = await performInstall("yarn", req({ cwd: dir, packages: ["left-pad@^1"] }));
       expect(res.ok).toBe(true);
       expect(res.message).toContain("would add");
       expect(res.message).toContain("dependencies");
@@ -450,9 +447,9 @@ describe("yarn engine dry-runs (no network: ranged specs only)", () => {
   test("directory without a project fails with a clear error", async () => {
     const dir = yarnDir(false);
     try {
-      await expect(
-        performInstall("yarn", req({ cwd: dir, packages: ["a@^1"] })),
-      ).rejects.toThrow(/no yarn project/);
+      await expect(performInstall("yarn", req({ cwd: dir, packages: ["a@^1"] }))).rejects.toThrow(
+        /no yarn project/,
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

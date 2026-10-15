@@ -81,7 +81,11 @@ export interface YarnSaveTarget {
  * (regular) or peerDependenciesMeta.optional (with -P). --dev with
  * --peer/--optional is rejected like the yarn CLI rejects it.
  */
-export function yarnTargetFor(o: { dev: boolean; peer: boolean; optional: boolean }): YarnSaveTarget {
+export function yarnTargetFor(o: {
+  dev: boolean;
+  peer: boolean;
+  optional: boolean;
+}): YarnSaveTarget {
   if (o.dev && (o.peer || o.optional)) {
     throw new InstallError("cannot combine --dev with --peer or --optional");
   }
@@ -129,7 +133,11 @@ function readJsonFile(path: string): Record<string, any> | null {
 export function resolveNpmWorkspace(cwd: string, name: string): string {
   const pkg = readJsonFile(join(cwd, "package.json"));
   const raw = pkg?.workspaces;
-  const patterns: unknown[] = Array.isArray(raw) ? raw : Array.isArray(raw?.packages) ? raw.packages : [];
+  const patterns: unknown[] = Array.isArray(raw)
+    ? raw
+    : Array.isArray(raw?.packages)
+      ? raw.packages
+      : [];
   if (patterns.length === 0) {
     throw new InstallError(`--workspace "${name}": no workspaces defined under ${cwd}`);
   }
@@ -228,7 +236,9 @@ async function performProjectInstall(pm: string, req: InstallRequest): Promise<I
 // --- npm: project install via arborist reify ---------------------------------
 
 async function projectInstallWithNpm(req: InstallRequest): Promise<InstallResult> {
-  let Arborist: new (opts?: Record<string, unknown>) => {
+  let Arborist: new (
+    opts?: Record<string, unknown>,
+  ) => {
     idealTree?: { inventory: Map<string, unknown> };
     buildIdealTree(opts?: Record<string, unknown>): Promise<unknown>;
     reify(opts?: Record<string, unknown>): Promise<unknown>;
@@ -345,9 +355,17 @@ async function projectInstallWithBinary(pm: string, req: InstallRequest): Promis
   const wsSuffix = req.workspace ? ` (workspace: ${req.workspace})` : "";
   const registryArgs =
     req.registry && (pm === "pnpm" || pm === "bun") ? ["--registry", req.registry] : [];
-  const args = [...baseArgs, ...binaryWorkspaceFlags(pm, req.workspace), ...registryArgs, ...req.extraArgs];
+  const args = [
+    ...baseArgs,
+    ...binaryWorkspaceFlags(pm, req.workspace),
+    ...registryArgs,
+    ...req.extraArgs,
+  ];
   if (req.dryRun) {
-    return { ok: true, message: `dry-run: would run \`${pm} ${args.join(" ")}\` — nothing executed` };
+    return {
+      ok: true,
+      message: `dry-run: would run \`${pm} ${args.join(" ")}\` — nothing executed`,
+    };
   }
   const code = await spawnPm(pm, args, req.cwd);
   if (code !== 0) throw new InstallError(`${pm} exited with code ${code}`);
@@ -357,7 +375,9 @@ async function projectInstallWithBinary(pm: string, req: InstallRequest): Promis
 // --- npm: @npmcli/arborist -----------------------------------------------
 
 async function installWithNpm(req: InstallRequest): Promise<InstallResult> {
-  let Arborist: new (opts?: Record<string, unknown>) => {
+  let Arborist: new (
+    opts?: Record<string, unknown>,
+  ) => {
     idealTree?: { inventory: Map<string, unknown> };
     buildIdealTree(opts?: Record<string, unknown>): Promise<unknown>;
     reify(opts?: Record<string, unknown>): Promise<unknown>;
@@ -478,10 +498,7 @@ export function selectYarnWorkspace(
   );
   if (byName) return byName;
   const byDir = project.workspaces.find((w) => {
-    const rel = w.cwd
-      .replace(project.cwd, "")
-      .replace(/^\/+/, "")
-      .replace(/\/+$/, "");
+    const rel = w.cwd.replace(project.cwd, "").replace(/^\/+/, "").replace(/\/+$/, "");
     return rel === name.replace(/^\/+/, "").replace(/\/+$/, "");
   });
   if (byDir) return byDir;
@@ -545,7 +562,7 @@ async function installWithYarn(req: InstallRequest): Promise<InstallResult> {
 
   const targets: Array<ReturnType<typeof structUtils.makeDescriptor>> = [];
   for (const spec of req.packages) {
-    let descriptor;
+    let descriptor: ReturnType<typeof structUtils.parseDescriptor>;
     try {
       descriptor = structUtils.parseDescriptor(spec, false);
     } catch (err) {
@@ -664,7 +681,10 @@ async function installWithBinary(pm: string, req: InstallRequest): Promise<Insta
     ...req.extraArgs,
   ];
   if (req.dryRun) {
-    return { ok: true, message: `dry-run: would run \`${pm} ${args.join(" ")}\` — nothing executed` };
+    return {
+      ok: true,
+      message: `dry-run: would run \`${pm} ${args.join(" ")}\` — nothing executed`,
+    };
   }
   const code = await spawnPm(pm, args, req.cwd);
   if (code !== 0) throw new InstallError(`${pm} exited with code ${code}`);

@@ -14,7 +14,9 @@ export const SPINNER_INTERVAL_MS = 80;
 /** Painted dots frame for tick `t`. Pure for tests. */
 export function spinnerFrame(tick: number): string {
   const frame =
-    SPINNER_FRAMES[((tick % SPINNER_FRAMES.length) + SPINNER_FRAMES.length) % SPINNER_FRAMES.length]!;
+    SPINNER_FRAMES[
+      ((tick % SPINNER_FRAMES.length) + SPINNER_FRAMES.length) % SPINNER_FRAMES.length
+    ]!;
   return paint(c.cyan, frame);
 }
 
@@ -40,7 +42,7 @@ export interface Spinner {
 
 function isAnimated(stream: NodeJS.WriteStream | undefined, enabled: boolean | undefined): boolean {
   if (enabled !== undefined) return enabled;
-  if (!stream || stream.isTTY !== true) return false;
+  if (stream?.isTTY !== true) return false;
   if (process.env.TERM === "dumb") return false;
   return true;
 }

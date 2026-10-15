@@ -8,13 +8,23 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "os": [
+    "darwin",
+    "linux"
   ],
   "engines": {
     "node": ">=18"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "provenance": true
+  },
+  "homepage": "https://github.com/abhishektumula/npm-safe#readme",
+  "bugs": {
+    "url": "https://github.com/abhishektumula/npm-safe/issues"
   },
   "repository": {
     "type": "git",
@@ -26,17 +36,24 @@
     "cli",
     "dependencies",
     "security",
-    "snyk"
+    "snyk",
+    "osv",
+    "supply-chain",
+    "audit"
   ],
   "scripts": {
     "start": "bun ./index.ts",
     "check": "bunx tsc --noEmit",
     "test": "bun test --coverage",
     "build": "bun build ./index.ts --outdir ./dist --target node",
-    "prepublishOnly": "bun run build && chmod +x dist/index.js"
+    "prepublishOnly": "bun run build && chmod +x dist/index.js",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "format:check": "biome format ."
   },
   "devDependencies": {
-    "@types/bun": "^1.4.2",
+    "@biomejs/biome": "2.5.15",
+    "@types/bun": "1.4.2",
     "typescript": "^7.0.2"
   },
   "dependencies": {

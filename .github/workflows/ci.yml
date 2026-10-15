@@ -1,5 +1,7 @@
 # Contributor gates (AGENTS.md): typecheck, tests with the >=90% coverage
 # gate, and a dependency audit. Green CI means the set is safe to commit.
+# The node-compat job proves the published bundle runs on every supported
+# Node, not just Bun.
 name: ci
 
 on:
@@ -13,8 +15,38 @@ jobs:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.3
       - run: bun install --frozen-lockfile
       - run: bun run check
+      - run: bun run lint
+      - run: bun run format:check
       - run: bun test --coverage
       - run: bun audit
+      - run: bun run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 3
+
+  node-compat:
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest]
+        node: [18, 20, 22]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      # Offline smoke: no network, no installs.
+      - run: node dist/index.js --version
+      - run: node dist/index.js --help
+      - run: node dist/index.js completions bash
+      - run: node dist/index.js alias

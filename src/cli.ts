@@ -1,4 +1,11 @@
-import { c, paint } from "./colors.ts";
+import { c, paint, setColorEnabled } from "./colors.ts";
+import { VERSION } from "./version.ts";
+import { EXIT } from "./exit.ts";
+import { setVerbose, vlog } from "./log.ts";
+import { runTool, TOOL_CMDS } from "./commands.ts";
+import { closest } from "./signals.ts";
+import { effectivePolicy, evaluate, parseMinScore, snykEnabled } from "./policy.ts";
+import { buildJsonReport } from "./report.ts";
 import { inspectPackages } from "./inspect.ts";
 import { confirm } from "./prompt.ts";
 import { detectPm, PmError } from "./pm.ts";
@@ -7,8 +14,6 @@ import { render } from "./render.ts";
 import { sanitizeTerminal } from "./sanitize.ts";
 import { startSpinner } from "./spinner.ts";
 import type { CliOptions, PackageReport } from "./types.ts";
-
-const VERSION = "0.1.2";
 
 export const INSTALL_VERBS = new Set(["install", "i", "add"]);
 
@@ -86,7 +91,7 @@ export const PASSTHROUGH_CMDS = new Set([
   "pkg",
 ]);
 
-export type Cmd = "install" | "passthrough";
+export type Cmd = "install" | "passthrough" | "tool";
 
 export interface Parsed {
   cmd: Cmd;
@@ -97,6 +102,8 @@ export interface Parsed {
   opts: CliOptions;
   help: boolean;
   version: boolean;
+  /** raw --min-score value that failed to parse (0–100 integer), else null */
+  minScoreInvalid: string | null;
 }
 
 export function parseArgs(argv: string[]): Parsed {
@@ -113,9 +120,15 @@ export function parseArgs(argv: string[]): Parsed {
     dryRun: false,
     json: false,
     pmOverride: null,
+    minScore: null,
+    verbose: false,
+    noCache: false,
+    noColor: false,
+    noSnyk: false,
   };
   let help = false;
   let version = false;
+  let minScoreInvalid: string | null = null;
   const positionals: string[] = [];
   // Original-order args minus nps-consumed flags: passthrough must forward
   // verbatim (`run dev --port 3000`, not `run dev 3000 --port`).
@@ -141,7 +154,24 @@ export function parseArgs(argv: string[]): Parsed {
     else if (a.startsWith("--registry=")) opts.registry = a.slice(11) || null;
     else if (a === "--dry-run") opts.dryRun = true;
     else if (a === "--json") opts.json = true;
-    else if (a === "-h" || a === "--help") help = true;
+    else if (a === "--verbose") {
+      opts.verbose = true;
+      kept.push(a);
+    } else if (a === "--no-cache") {
+      opts.noCache = true;
+      kept.push(a);
+    } else if (a === "--no-snyk") {
+      opts.noSnyk = true;
+      kept.push(a);
+    } else if (a === "--no-color") {
+      opts.noColor = true;
+      kept.push(a);
+    } else if (a === "--min-score" || a.startsWith("--min-score=")) {
+      const raw = a === "--min-score" ? argv[++i] : a.slice(12);
+      opts.minScore = parseMinScore(raw);
+      if (opts.minScore === null) minScoreInvalid = raw ?? "";
+      kept.push(a, ...(a === "--min-score" && raw !== undefined ? [raw] : []));
+    } else if (a === "-h" || a === "--help") help = true;
     else if (a === "-v" || a === "--version") version = true;
     else if (a === "--pm") opts.pmOverride = argv[++i] ?? null;
     else if (a.startsWith("--pm=")) opts.pmOverride = a.slice(5);
@@ -155,6 +185,17 @@ export function parseArgs(argv: string[]): Parsed {
   }
 
   const first = positionals[0];
+  if (first !== undefined && TOOL_CMDS.has(first)) {
+    return {
+      cmd: "tool",
+      subcommand: first,
+      passthroughArgs: kept.slice(1),
+      opts,
+      help,
+      version,
+      minScoreInvalid,
+    };
+  }
   if (first !== undefined && PASSTHROUGH_CMDS.has(first)) {
     return {
       cmd: "passthrough",
@@ -163,19 +204,26 @@ export function parseArgs(argv: string[]): Parsed {
       opts,
       help,
       version,
+      minScoreInvalid,
     };
   }
+  // `nps check <pkg…>` = inspect only: the install flow with --dry-run forced.
+  const isCheck = first === "check";
+  if (isCheck) opts.dryRun = true;
   // install verb explicit (nps install/i/add …) or bare packages (nps express …)
   const packages =
-    first !== undefined && INSTALL_VERBS.has(first) ? positionals.slice(1) : positionals;
+    first !== undefined && (INSTALL_VERBS.has(first) || first === "check")
+      ? positionals.slice(1)
+      : positionals;
   opts.packages = packages;
   return {
     cmd: "install",
-    subcommand: "install",
+    subcommand: isCheck ? "check" : "install",
     passthroughArgs: [],
     opts,
     help,
     version,
+    minScoreInvalid,
   };
 }
 
@@ -204,6 +252,12 @@ export function helpText(): string {
     nps install <pkg...> [flags]     inspect, confirm, then install
     nps install                       install project deps (no intel screen)
     nps i express lodash -a           inspect two packages, full detail
+    nps check express                 inspect only, never installs (= --dry-run)
+    nps scan [--prod]                 screen this project's declared dependencies
+    nps doctor                        check manager detection, registry, snyk, osv, cache
+    nps cache-clear                   delete nps's intel cache
+    nps completions <bash|zsh|fish>   print a shell completion script
+    nps alias                         print handy shell aliases
     nps add "express@5" --dry-run     inspect only, install nothing
     nps express lodash -y             bare packages also mean install
     nps add user/repo file:../lib     non-registry specs skip intel + warn
@@ -216,17 +270,29 @@ export function helpText(): string {
     -D, --dev        install as devDependency (--save-dev / --dev per PM)
     -P, --peer       install as peerDependency (-P means peer here, not pnpm's -P/prod)
     -O, --optional   install as optionalDependency (both = optional peer)
+    -E, --save-exact pin the exact version instead of a ^range
     -w, --workspace <name>
                      add to a workspace package (pnpm/bun get --filter <name>)
     --registry <url> use a private registry (.npmrc + NPM_TOKEN also work)
     --pm <name>      force package manager: npm | bun | pnpm | yarn | brew
+    --min-score <n>  block (exit 3) when snyk health is below n/100 or unknown
     --dry-run        show intel only, never install
-    --json           machine-readable report instead of the color card
+    --json           machine-readable report (schemaVersion 1); never prompts
+    --verbose        diagnostics on stderr: detection, cache, timings, ignored flags
+    --no-cache       skip the intel cache for this run
+    --no-snyk        skip the Snyk health scrape (config: "sources": { "snyk": false })
+    --no-color       plain output (NO_COLOR is honored; pipes are plain automatically)
     -v, --version    print version
     -h, --help       this help
 
+  ${paint(c.cyan, "exit codes")}
+    0 ok (also: you declined the prompt)   1 error   3 blocked by policy
+    4 intel unavailable (every lookup failed)
+
   ${paint(c.cyan, "notes")}
     3+ packages switch to a compact row: total(direct, transitive), no repo url.
+    Intel = registry metadata + snyk health + OSV advisories + local signals
+    (deprecated, install scripts, name close to a popular package).
     Bare install (no packages) installs project deps like the manager does.
     Non-registry specs (user/repo, file:, link:, tarball URLs) skip intel
     with a warning and install straight through.
@@ -242,9 +308,12 @@ export function helpText(): string {
     one workspace package on every manager (same command, same target);
     --filter stays binary-only and is rejected on the npm/yarn engines.
     Scores under 40/100 (or unavailable health) print a warning first —
-    advisory only, nps never blocks. nps.config.json { "packageManagers":
-    { "<name>": { "enabled": false } } } opts individual managers out
-    (disabled managers fail before any intel).
+    advisory unless a policy is set. nps.config.json:
+      { "packageManagers": { "<name>": { "enabled": false } },
+        "policy": { "minScore": 60, "blockDeprecated": true,
+                    "blockVulnerabilities": "high",
+                    "allowedLicenses": ["MIT", "ISC"] } }
+    Policy violations exit 3 and -y does not bypass them.
 `;
 }
 
@@ -252,25 +321,67 @@ export function helpText(): string {
 export const LOW_HEALTH_THRESHOLD = 40;
 
 /** Warn about low or unavailable health before the install prompt. */
-export function warnOnLowHealth(reports: PackageReport[]): void {
-  const low = reports.filter((r) => r.health.score !== null && r.health.score < LOW_HEALTH_THRESHOLD);
+export function warnOnLowHealth(
+  reports: PackageReport[],
+  out: (line: string) => void = console.log,
+): void {
+  const low = reports.filter(
+    (r) => r.health.score !== null && r.health.score < LOW_HEALTH_THRESHOLD,
+  );
   // Unparsable pages get their own louder warning in run(); don't double-report here.
-  const unknown = reports.filter((r) => r.health.score === null && !r.health.unparsed);
+  const unknown = reports.filter(
+    (r) => r.health.score === null && !r.health.unparsed && !r.health.skipped,
+  );
   if (low.length > 0) {
     const names = low
       .map((r) => `${sanitizeTerminal(r.meta?.name ?? r.query)} (${r.health.score}/100)`)
       .join(", ");
-    console.log(paint(c.red, `  ⚠ low health score: ${names} — review before installing`));
+    out(paint(c.red, `  ⚠ low health score: ${names} — review before installing`));
   }
   if (unknown.length > 0) {
     const names = unknown.map((r) => sanitizeTerminal(r.meta?.name ?? r.query)).join(", ");
-    console.log(paint(c.dim, `  ⚠ health unavailable (snyk unreachable): ${names}`));
+    out(paint(c.dim, `  ⚠ health unavailable (snyk unreachable): ${names}`));
   }
 }
+
+/** Command words a mistyped package name might actually have meant. */
+function commandWords(): string[] {
+  return [...INSTALL_VERBS, ...PASSTHROUGH_CMDS, ...TOOL_CMDS, "check"].filter(
+    (w) => w.length >= 4,
+  );
+}
+
 export async function run(argv: string[]): Promise<void> {
-  const { cmd, subcommand, passthroughArgs, opts, help, version } = parseArgs(argv);
+  const { cmd, subcommand, passthroughArgs, opts, help, version, minScoreInvalid } =
+    parseArgs(argv);
   if (version) {
     console.log(VERSION);
+    return;
+  }
+
+  // Process-wide switches first so every later line honors them.
+  setVerbose(opts.verbose);
+  if (opts.noCache) process.env.NPS_NO_CACHE = "1";
+  // NO_COLOR is honored inside paint(); piped stdout is handled by index.ts.
+  if (opts.noColor) setColorEnabled(false);
+
+  if (minScoreInvalid !== null) {
+    console.error(
+      paint(
+        c.red,
+        `  ✖ --min-score needs an integer 0–100 (got "${sanitizeTerminal(minScoreInvalid)}").`,
+      ),
+    );
+    process.exitCode = EXIT.ERROR;
+    return;
+  }
+
+  if (cmd === "tool") {
+    if (help) {
+      console.log(helpText());
+      return;
+    }
+    process.exitCode = await runTool(subcommand, passthroughArgs, opts);
     return;
   }
 
@@ -280,9 +391,10 @@ export async function run(argv: string[]): Promise<void> {
     ({ pm, via } = detectPm(opts.pmOverride));
   } catch (err) {
     console.error(paint(c.red, `  ✖ ${err instanceof PmError ? err.message : String(err)}`));
-    process.exitCode = 1;
+    process.exitCode = EXIT.ERROR;
     return;
   }
+  vlog(`package manager: ${pm} (detected: ${via}), engine: ${engineFor(pm)}`);
 
   if (cmd === "passthrough") {
     if (help) {
@@ -299,7 +411,7 @@ export async function run(argv: string[]): Promise<void> {
       );
     } catch (err) {
       console.error(paint(c.red, `  ✖ ${err instanceof InstallError ? err.message : String(err)}`));
-      process.exitCode = 1;
+      process.exitCode = EXIT.ERROR;
     }
     return;
   }
@@ -318,7 +430,7 @@ export async function run(argv: string[]): Promise<void> {
         `  Use a binary installer instead: --pm pnpm|bun|brew, or run \`${pm} install -g\` directly.`,
       ),
     );
-    process.exitCode = 1;
+    process.exitCode = EXIT.ERROR;
     return;
   }
 
@@ -328,7 +440,7 @@ export async function run(argv: string[]): Promise<void> {
   if (opts.dev && (opts.peer || opts.optional)) {
     console.error(paint(c.red, "  ✖ cannot combine -D/--dev with -P/--peer or -O/--optional."));
     console.error(paint(c.dim, "  Pick one dependency field per add."));
-    process.exitCode = 1;
+    process.exitCode = EXIT.ERROR;
     return;
   }
 
@@ -343,15 +455,21 @@ export async function run(argv: string[]): Promise<void> {
     console.error(
       paint(c.dim, "  Or pick a binary manager (--pm pnpm|bun) that speaks --filter natively."),
     );
-    process.exitCode = 1;
+    process.exitCode = EXIT.ERROR;
     return;
   }
 
   // brew has no workspace concept at all — fail instead of dropping the flag.
   if (opts.workspace && pm === "brew") {
     console.error(paint(c.red, "  ✖ --workspace is not supported with brew (no workspaces)."));
-    process.exitCode = 1;
+    process.exitCode = EXIT.ERROR;
     return;
+  }
+
+  // Flags the in-process engines cannot honor: say so before any work, not after.
+  if (usesInProcessEngine) {
+    const ignored = opts.extraArgs.filter((a) => a !== "--save-exact" && a !== "-E");
+    if (ignored.length > 0) vlog(`ignored by the ${pm} engine: ${ignored.join(" ")}`);
   }
 
   // Bare nps install (no packages) -> project install (like npm install)
@@ -383,11 +501,11 @@ export async function run(argv: string[]): Promise<void> {
         message: String(err instanceof InstallError ? err.message : err),
       }));
       console.log(paint(c.dim, `  ◌ ${res.message}`));
-      if (!res.ok) process.exitCode = 1;
+      if (!res.ok) process.exitCode = EXIT.ERROR;
       return;
     }
     if (!opts.yes && !(await confirm())) {
-      console.log(paint(c.dim, "  ◌ aborted. nothing installed."));
+      console.log(paint(c.dim, abortMessage()));
       return;
     }
     // Dots spinner while the engine works — Arborist is silent, so the old
@@ -398,7 +516,7 @@ export async function run(argv: string[]): Promise<void> {
       spinner.succeed(res.message);
     } catch (err) {
       spinner.fail(err instanceof InstallError ? err.message : String(err));
-      process.exitCode = 1;
+      process.exitCode = EXIT.ERROR;
     }
     return;
   }
@@ -408,13 +526,18 @@ export async function run(argv: string[]): Promise<void> {
     return;
   }
 
+  // --json keeps stdout machine-readable: every human line goes to stderr.
+  const say = (line: string): void => (opts.json ? console.error(line) : console.log(line));
+
   // Animated dots while registry + snyk + dep crawl run — the old static
   // line felt frozen on slow networks. --json stays silent (machine-readable).
+  const noSnyk = opts.noSnyk || !snykEnabled(process.cwd());
   let reports: PackageReport[];
   if (opts.json) {
     reports = await inspectPackages(opts.packages, {
       cwd: process.cwd(),
       registry: opts.registry,
+      noSnyk,
     });
   } else {
     const spinner = startSpinner(`fetching intel for ${opts.packages.join(", ")}`);
@@ -422,19 +545,29 @@ export async function run(argv: string[]): Promise<void> {
       reports = await inspectPackages(opts.packages, {
         cwd: process.cwd(),
         registry: opts.registry,
+        noSnyk,
       });
     } finally {
       spinner.stop();
     }
   }
 
+  const policy = effectivePolicy(process.cwd(), opts.minScore);
+  const violations = evaluate(reports, policy);
+
   if (opts.json) {
-    console.log(JSON.stringify(reports, null, 2));
+    console.log(
+      JSON.stringify(
+        buildJsonReport(subcommand === "check" ? "check" : "install", reports, policy, violations),
+        null,
+        2,
+      ),
+    );
   } else {
     console.log(render(reports, opts.showAll));
   }
 
-  console.log(
+  say(
     paint(
       c.dim,
       `  ◈ installer: ${pm} via ${engineFor(pm)} (detected: ${via})${saveFlagsSuffix(opts)}${workspaceSuffix(opts)}${registrySuffix(opts)}`,
@@ -444,7 +577,7 @@ export async function run(argv: string[]): Promise<void> {
   const nonRegistry = reports.filter((r) => r.isNonRegistry);
   if (nonRegistry.length > 0) {
     const specs = nonRegistry.map((r) => r.query).join(", ");
-    console.log(paint(c.yellow, `  ⚠ non-registry specs (intel skipped): ${specs}`));
+    say(paint(c.yellow, `  ⚠ non-registry specs (intel skipped): ${specs}`));
   }
 
   // Snyk answered but nothing parsed: say so out loud. Fail-open stays
@@ -452,16 +585,36 @@ export async function run(argv: string[]): Promise<void> {
   const unparsed = reports.filter((r) => r.health.unparsed);
   if (unparsed.length > 0) {
     const specs = unparsed.map((r) => r.query).join(", ");
-    console.log(paint(c.yellow, `  ⚠ snyk health unparsable (${specs}) — unknown, not healthy`));
+    say(paint(c.yellow, `  ⚠ snyk health unparsable (${specs}) — unknown, not healthy`));
   }
 
   const registryFailed = reports.filter((r) => !r.isNonRegistry && r.meta === null);
   if (registryFailed.length === reports.length && nonRegistry.length === 0) {
     console.error(paint(c.red, "  ✖ nothing to install — all lookups failed."));
-    process.exitCode = 1;
+    for (const r of registryFailed) {
+      const hint = closest(r.query, commandWords());
+      if (hint) console.error(paint(c.dim, `  did you mean \`nps ${hint}\`?`));
+    }
+    process.exitCode = EXIT.UNAVAILABLE;
     return;
   }
-  warnOnLowHealth(reports.filter((r) => r.meta !== null));
+  warnOnLowHealth(
+    reports.filter((r) => r.meta !== null),
+    say,
+  );
+
+  // Policy gate: runs before the dry-run/prompt split so `nps check` works as
+  // a CI gate, and -y can never wave a violation through.
+  if (violations.length > 0) {
+    console.error(paint(c.red, `  ✖ blocked by policy (${violations.length}):`));
+    for (const v of violations) console.error(paint(c.red, `    - ${sanitizeTerminal(v.message)}`));
+    console.error(
+      paint(c.dim, "  Loosen --min-score / nps.config.json policy to proceed. Nothing installed."),
+    );
+    process.exitCode = EXIT.BLOCKED;
+    return;
+  }
+
   const installable = reports.filter((r) => r.meta || r.isNonRegistry).map((r) => r.query);
   const req = {
     cwd: process.cwd(),
@@ -480,12 +633,14 @@ export async function run(argv: string[]): Promise<void> {
       ok: false as const,
       message: String(err instanceof InstallError ? err.message : err),
     }));
-    console.log(paint(c.dim, `  ◌ ${res.message}`));
-    if (!res.ok) process.exitCode = 1;
+    say(paint(c.dim, `  ◌ ${res.message}`));
+    if (!res.ok) process.exitCode = EXIT.ERROR;
     return;
   }
+  // --json is non-interactive: it reports, and only installs when -y says so.
+  if (opts.json && !opts.yes) return;
   if (!opts.yes && !(await confirm())) {
-    console.log(paint(c.dim, "  ◌ aborted. nothing installed."));
+    say(paint(c.dim, abortMessage()));
     return;
   }
   // Dots spinner while the engine works — same frozen-static-line problem as
@@ -496,6 +651,13 @@ export async function run(argv: string[]): Promise<void> {
     spinner.succeed(res.message);
   } catch (err) {
     spinner.fail(err instanceof InstallError ? err.message : String(err));
-    process.exitCode = 1;
+    process.exitCode = EXIT.ERROR;
   }
+}
+
+/** Declined vs. non-interactive: the second needs a hint, or CI logs look like a silent no-op. */
+function abortMessage(): string {
+  return process.stdin.isTTY
+    ? "  ◌ aborted. nothing installed."
+    : "  ◌ aborted: not an interactive terminal. nothing installed (pass -y to install).";
 }
