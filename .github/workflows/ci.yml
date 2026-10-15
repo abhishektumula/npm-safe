@@ -40,6 +40,10 @@ jobs:
         os: [ubuntu-24.04, macos-latest]
         node: [18, 20, 22]
     steps:
+      # Checkout supplies package.json ("type": "module"): Node 18 and 20.x
+      # before ESM detection only treat dist/index.js as ESM when a package.json
+      # above it says so, exactly like the published package layout.
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
         with:
           name: dist
