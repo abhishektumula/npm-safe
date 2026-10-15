@@ -12,7 +12,7 @@ jobs:
   verify:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.3
@@ -43,7 +43,7 @@ jobs:
       # Checkout supplies package.json ("type": "module"): Node 18 and 20.x
       # before ESM detection only treat dist/index.js as ESM when a package.json
       # above it says so, exactly like the published package layout.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v4
         with:
           name: dist
