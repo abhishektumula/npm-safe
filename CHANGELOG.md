@@ -5,6 +5,11 @@ versions follow semver (minor bumps may change CLI output while < 1.0).
 
 ## [Unreleased]
 
+### Fixed
+- Local `npm publish` no longer fails with `Automatic provenance generation
+  not supported for provider: null`: `provenance` removed from
+  `publishConfig` (CI `release.yml` still publishes with `--provenance`).
+
 ## [2.0.0] - 2026-10-16
 
 Major release: `--json` output shape and an exit code changed (see Changed).

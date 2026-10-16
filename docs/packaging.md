@@ -46,6 +46,14 @@ npm pack --dry-run               # dist/index.js, README.md, CHANGELOG.md, packa
 npm publish --access public      # @hort/nps (runs prepublishOnly → build)
 ```
 
+Provenance is intentionally **not** in `publishConfig`: it only works on a
+supported CI provider (GitHub Actions with `id-token: write`). Keeping it
+in `package.json` breaks every local `npm publish` with
+`Automatic provenance generation not supported for provider: null`.
+`release.yml` already passes `--provenance` explicitly, so tag publishes
+stay attested while local publishes work. Publish by hand without the
+flag; add `--provenance` only on supported CI.
+
 `bun.lock` is committed, so installs are reproducible for contributors;
 the published tarball needs no lockfile. Engine deps
 (`@npmcli/arborist`, `@yarnpkg/*`) install automatically as
@@ -90,5 +98,6 @@ from another clone: unlink it and re-link from the right directory.
    (`git tag vX.Y.Z`) **only when explicitly asked** — never push or
    open PRs unasked.
 8. Push the tag (`release.yml` publishes), or publish by hand with
-   `npm publish --provenance --access public`; then sanity-install in a
+   `npm publish --access public` (no `--provenance`: local publishes have
+   no OIDC provider, so the flag fails with `provider: null`); then sanity-install in a
    scratch dir: `npm install -g @hort/nps && nps --version`.
