@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs, run } from "../src/cli.ts";
 import { setColorEnabled } from "../src/colors.ts";
+import { VERSION } from "../src/version.ts";
 import { setVerbose } from "../src/log.ts";
 import { clearPolicyCache } from "../src/policy.ts";
 import { stripAnsi } from "./helper.ts";
@@ -83,7 +84,7 @@ function output(): string {
 describe("run", () => {
   test("version flag prints and exits clean", async () => {
     await run(["-v"]);
-    expect(output()).toContain("0.1.2");
+    expect(output()).toContain(VERSION);
     expect(process.exitCode).toBe(0);
   });
   test("no packages does project install (dry-run)", async () => {

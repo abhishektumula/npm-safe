@@ -7,7 +7,7 @@ stops (policy still applies and sets the exit code).
 ```jsonc
 {
   "schemaVersion": 1,            // bumped on any breaking change
-  "nps": "0.1.2",
+  "nps": "2.0.0",
   "command": "install",          // "install" | "check" | "scan"
   "policy": {
     "active": true,              // any policy rule configured
