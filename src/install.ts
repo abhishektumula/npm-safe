@@ -2,30 +2,18 @@
 //
 //   npm  -> @npmcli/arborist (the npm CLI's own tree engine:
 //           buildIdealTree({ add }) + reify())
-//   yarn -> @yarnpkg/core (berry's documented Node API: "first and
-//           foremost a Node API that can be used programmatically") +
-//           plugin-npm for registry resolution + the linker plugin
-//           matching the project's nodeLinker (pnp | node-modules).
-//           Plugins are pre-registered with Configuration.find (like the
-//           yarn CLI) so plugin-provided .yarnrc.yml settings
-//           (npmRegistryServer, npmScopes, npmAuthToken) are honored.
-//           Bare non-registry specs (user/repo, file:, link:, tarballs)
-//           aren't valid yarn descriptors, so those fall back to the
-//           yarn binary, which resolves them natively.
-//   pnpm / bun / brew -> spawned binary. Neither pnpm (a native binary
-//           since v12, no public install API) nor bun (single binary,
-//           CLI-only surface) ships a programmatic install API, so the
-//           subprocess boundary lives here — behind the same interface,
-//           ready to migrate when an API appears.
+//   yarn / pnpm / bun / brew -> spawned binary. @yarnpkg/core cannot be
+//           installed from npm (it pins `got` with a yarn-only `patch:`
+//           spec) and none of these managers ships a stable programmatic
+//           install API, so the subprocess boundary lives here — behind
+//           the same interface, ready to migrate when an API appears.
 //
 // Nothing outside this file spawns a package manager.
 
 import { spawn } from "node:child_process";
 import { readFileSync, readdirSync, type Dirent } from "node:fs";
 import { join } from "node:path";
-import { fetchNpmMeta } from "./npm.ts";
 import { arboristRegistryOpts, loadNpmrc } from "./npmrc.ts";
-import { isRegistrySpec } from "./spec.ts";
 import { ALL_PMS } from "./pm.ts";
 import type { InstallRequest, InstallResult } from "./types.ts";
 
@@ -67,31 +55,6 @@ export function npmSaveTypeFor(o: { dev: boolean; peer: boolean; optional: boole
   if (o.peer) return "peer";
   if (o.optional) return "optional";
   return o.dev ? "dev" : "prod";
-}
-
-export interface YarnSaveTarget {
-  table: "dependencies" | "devDependencies" | "peerDependencies";
-  /** ident-level meta to stamp: regular optional dep vs optional peer */
-  optionalMeta: "regular" | "peer" | null;
-}
-
-/**
- * Map the wrapper save flags to the yarn manifest table (+ meta), mirroring
- * `yarn add`: -P writes peerDependencies, -O marks optionalDependencies
- * (regular) or peerDependenciesMeta.optional (with -P). --dev with
- * --peer/--optional is rejected like the yarn CLI rejects it.
- */
-export function yarnTargetFor(o: {
-  dev: boolean;
-  peer: boolean;
-  optional: boolean;
-}): YarnSaveTarget {
-  if (o.dev && (o.peer || o.optional)) {
-    throw new InstallError("cannot combine --dev with --peer or --optional");
-  }
-  if (o.peer) return { table: "peerDependencies", optionalMeta: o.optional ? "peer" : null };
-  if (o.optional) return { table: "dependencies", optionalMeta: "regular" };
-  return { table: o.dev ? "devDependencies" : "dependencies", optionalMeta: null };
 }
 
 /**
@@ -185,7 +148,7 @@ export function engineFor(pm: string): string {
     case "npm":
       return "@npmcli/arborist";
     case "yarn":
-      return "@yarnpkg/core";
+      return "yarn binary (no programmatic API)";
     case "pnpm":
       return "pnpm binary (no programmatic API)";
     case "bun":
@@ -206,7 +169,6 @@ export async function performInstall(pm: string, req: InstallRequest): Promise<I
     case "npm":
       return installWithNpm(req);
     case "yarn":
-      return installWithYarn(req);
     case "pnpm":
     case "bun":
     case "brew":
@@ -223,7 +185,6 @@ async function performProjectInstall(pm: string, req: InstallRequest): Promise<I
     case "npm":
       return projectInstallWithNpm(req);
     case "yarn":
-      return projectInstallWithYarn(req);
     case "pnpm":
     case "bun":
     case "brew":
@@ -286,64 +247,10 @@ async function projectInstallWithNpm(req: InstallRequest): Promise<InstallResult
   };
 }
 
-// --- yarn: project install ---------------------------------------------------
-
-async function projectInstallWithYarn(req: InstallRequest): Promise<InstallResult> {
-  let core: typeof import("@yarnpkg/core");
-  try {
-    core = await import("@yarnpkg/core");
-  } catch {
-    throw new InstallError("yarn engine unavailable: @yarnpkg/core is not installed");
-  }
-  const { Project, StreamReport, Cache } = core;
-  const { configuration, portableCwd: cwd } = await loadYarnConfiguration(core, req.cwd);
-  // --registry wins over .yarnrc.yml (auth still comes from .yarnrc.yml /
-  // environment, which Configuration.find already loaded).
-  if (req.registry) applyYarnRegistryOverride(configuration, req.registry, cwd);
-  const linker = configuration.get("nodeLinker");
-
-  let findResult: Awaited<ReturnType<typeof Project.find>>;
-  try {
-    findResult = await Project.find(configuration, cwd);
-  } catch (err) {
-    throw new InstallError(`no yarn project found under ${req.cwd}: ${errMsg(err)}`);
-  }
-  const { workspace } = findResult;
-  if (!workspace) throw new InstallError(`no yarn workspace found under ${req.cwd}`);
-  // Yarn has no workspace-filtered project install (`yarn install` always
-  // covers the whole project), so --workspace here would silently do the
-  // wrong thing — fail with the way out instead.
-  if (req.workspace) {
-    throw new InstallError(
-      `--workspace "${req.workspace}": yarn cannot filter a project install — omit it or run inside the workspace`,
-    );
-  }
-
-  if (req.dryRun) {
-    return {
-      ok: true,
-      message: `dry-run: would install project dependencies (linker: ${linker}) — nothing written`,
-    };
-  }
-
-  const report = await StreamReport.start(
-    { configuration, stdout: process.stdout },
-    async (report) => {
-      const { project } = await Project.find(configuration, cwd);
-      const cache = await Cache.find(configuration);
-      await project.install({ cache, report });
-    },
-  );
-  if (report.hasErrors()) throw new InstallError("yarn install reported errors (see above)");
-  return {
-    ok: true,
-    message: `installed project dependencies via @yarnpkg/core`,
-  };
-}
-
 // --- binary: project install -------------------------------------------------
 
 const BINARY_PROJECT_INSTALL_ARGS: Record<string, string[]> = {
+  yarn: ["install"],
   bun: ["install"],
   pnpm: ["install"],
   brew: ["install"],
@@ -352,6 +259,13 @@ const BINARY_PROJECT_INSTALL_ARGS: Record<string, string[]> = {
 async function projectInstallWithBinary(pm: string, req: InstallRequest): Promise<InstallResult> {
   const baseArgs = BINARY_PROJECT_INSTALL_ARGS[pm];
   if (!baseArgs) throw new InstallError(`unsupported package manager: ${pm}`);
+  // `yarn install` always covers the whole project — silently ignoring
+  // --workspace would do the wrong thing, so fail with the way out.
+  if (pm === "yarn" && req.workspace) {
+    throw new InstallError(
+      `--workspace "${req.workspace}": yarn cannot filter a project install — omit it or run inside the workspace`,
+    );
+  }
   const wsSuffix = req.workspace ? ` (workspace: ${req.workspace})` : "";
   const registryArgs =
     req.registry && (pm === "pnpm" || pm === "bun") ? ["--registry", req.registry] : [];
@@ -359,7 +273,7 @@ async function projectInstallWithBinary(pm: string, req: InstallRequest): Promis
     ...baseArgs,
     ...binaryWorkspaceFlags(pm, req.workspace),
     ...registryArgs,
-    ...req.extraArgs,
+    ...yarnExtraArgs(pm, req.extraArgs),
   ];
   if (req.dryRun) {
     return {
@@ -367,7 +281,7 @@ async function projectInstallWithBinary(pm: string, req: InstallRequest): Promis
       message: `dry-run: would run \`${pm} ${args.join(" ")}\` — nothing executed`,
     };
   }
-  const code = await spawnPm(pm, args, req.cwd);
+  const code = await spawnPm(pm, args, req.cwd, binaryRegistryEnv(pm, req.registry));
   if (code !== 0) throw new InstallError(`${pm} exited with code ${code}`);
   return { ok: true, message: `installed project dependencies via ${pm}${wsSuffix}` };
 }
@@ -431,213 +345,6 @@ async function installWithNpm(req: InstallRequest): Promise<InstallResult> {
   };
 }
 
-// --- yarn: @yarnpkg/core ---------------------------------------------------
-
-type YarnCore = typeof import("@yarnpkg/core");
-type YarnProject = Awaited<ReturnType<YarnCore["Project"]["find"]>>["project"];
-type YarnWorkspace = Awaited<ReturnType<YarnCore["Project"]["find"]>>["workspace"];
-type YarnConfiguration = Awaited<ReturnType<YarnCore["Configuration"]["find"]>>;
-type YarnPortablePath = import("@yarnpkg/fslib").PortablePath;
-
-const YARN_ENGINE_PLUGINS = ["@yarnpkg/plugin-npm", "@yarnpkg/plugin-nm", "@yarnpkg/plugin-pnp"];
-
-/**
- * Load the yarn Configuration with the engine plugins pre-registered, so
- * plugin-provided settings in .yarnrc.yml (npmRegistryServer, npmScopes,
- * npmAuthToken — i.e. every private-registry setup) are recognized instead
- * of throwing "Unrecognized configuration setting". Mirrors how the yarn
- * CLI itself feeds its bundled plugins to Configuration.find. `core` is
- * passed in because @yarnpkg/core is lazily imported, never at module load.
- */
-export async function loadYarnConfiguration(
-  core: YarnCore,
-  cwd: string,
-): Promise<{ configuration: YarnConfiguration; portableCwd: YarnPortablePath }> {
-  const { Configuration } = core;
-  const { npath } = await import("@yarnpkg/fslib");
-  const portableCwd = npath.toPortablePath(cwd);
-  const modules = new Map<string, unknown>();
-  for (const name of YARN_ENGINE_PLUGINS) modules.set(name, await import(name));
-  // find() activates these itself; activating twice throws (settings exist).
-  const configuration = await Configuration.find(portableCwd, {
-    modules,
-    plugins: new Set<string>(YARN_ENGINE_PLUGINS),
-  });
-  return { configuration, portableCwd };
-}
-
-/**
- * Apply a `--registry` override to a loaded yarn Configuration (CLI flag wins
- * over .yarnrc.yml, like the yarn CLI's own precedence). Auth still comes
- * from the project's .yarnrc.yml / environment, which Configuration.find
- * already loads. Call after activating plugin-npm so the setting is known.
- */
-export function applyYarnRegistryOverride(
-  configuration: YarnConfiguration,
-  registry: string,
-  cwd: YarnConfiguration["startingCwd"],
-): void {
-  configuration.useWithSource("<command line>", { npmRegistryServer: registry }, cwd, {
-    overwrite: true,
-  });
-}
-
-/**
- * Resolve `-w/--workspace <name>` to a project workspace, matching by
- * package name or by path relative to the project root (npm accepts both
- * spellings, so the wrapper does too). structUtils is passed in because
- * @yarnpkg/core is lazily imported by the engine, never at module load.
- */
-export function selectYarnWorkspace(
-  project: YarnProject,
-  name: string,
-  structUtils: YarnCore["structUtils"],
-): NonNullable<YarnWorkspace> {
-  const byName = project.workspaces.find(
-    (w) => w.manifest.name && structUtils.stringifyIdent(w.manifest.name) === name,
-  );
-  if (byName) return byName;
-  const byDir = project.workspaces.find((w) => {
-    const rel = w.cwd.replace(project.cwd, "").replace(/^\/+/, "").replace(/\/+$/, "");
-    return rel === name.replace(/^\/+/, "").replace(/\/+$/, "");
-  });
-  if (byDir) return byDir;
-  const available = project.workspaces
-    .map((w) => (w.manifest.name ? structUtils.stringifyIdent(w.manifest.name) : w.cwd))
-    .sort()
-    .join(", ");
-  throw new InstallError(`--workspace "${name}": no such workspace (available: ${available})`);
-}
-
-async function installWithYarn(req: InstallRequest): Promise<InstallResult> {
-  // Bare non-registry specs (user/repo, file:, link:, tarball URLs) are not
-  // valid yarn descriptors — the yarn CLI itself requires a `name@range`
-  // form for those. Delegate the whole command to the yarn binary, which
-  // resolves paths/URLs natively (relative paths via name extraction).
-  if (req.packages.some((p) => !isRegistrySpec(p))) {
-    if (req.workspace) {
-      throw new InstallError(
-        `--workspace "${req.workspace}": the yarn binary fallback cannot target a workspace — cd into it or use name@range specs`,
-      );
-    }
-    return installWithBinary("yarn", req);
-  }
-  let core: typeof import("@yarnpkg/core");
-  try {
-    core = await import("@yarnpkg/core");
-  } catch {
-    throw new InstallError("yarn engine unavailable: @yarnpkg/core is not installed");
-  }
-  const { Project, StreamReport, structUtils, Cache } = core;
-  if (req.packages.length === 0) throw new InstallError("nothing to install");
-
-  // Engine plugins (registry resolution in plugin-npm, linkers in
-  // plugin-pnp / plugin-nm) are registered inside loadYarnConfiguration.
-  // The effective linker is then chosen by the project's own config.
-  const { configuration, portableCwd: cwd } = await loadYarnConfiguration(core, req.cwd);
-  // --registry wins over .yarnrc.yml (auth still comes from .yarnrc.yml /
-  // environment, which Configuration.find already loaded).
-  if (req.registry) applyYarnRegistryOverride(configuration, req.registry, cwd);
-  const linker = configuration.get("nodeLinker");
-
-  let findResult: Awaited<ReturnType<typeof Project.find>>;
-  try {
-    findResult = await Project.find(configuration, cwd);
-  } catch (err) {
-    throw new InstallError(`no yarn project found under ${req.cwd}: ${errMsg(err)}`);
-  }
-  const { project, workspace: nearest } = findResult;
-  if (!nearest) throw new InstallError(`no yarn workspace found under ${req.cwd}`);
-  // Same flag, same target on every manager: --workspace writes the named
-  // workspace's manifest (like `yarn workspace <name> add`) instead of the
-  // nearest one.
-  const workspace = req.workspace
-    ? selectYarnWorkspace(project, req.workspace, structUtils)
-    : nearest;
-  const wsSuffix = req.workspace ? ` (workspace: ${req.workspace})` : "";
-
-  // Mirror npm semantics: caret default, exact pin on --save-exact/-E.
-  const { exact, ignored } = splitExactFlag(req.extraArgs);
-  const target = yarnTargetFor(req);
-
-  const targets: Array<ReturnType<typeof structUtils.makeDescriptor>> = [];
-  for (const spec of req.packages) {
-    let descriptor: ReturnType<typeof structUtils.parseDescriptor>;
-    try {
-      descriptor = structUtils.parseDescriptor(spec, false);
-    } catch (err) {
-      throw new InstallError(`invalid package spec "${spec}": ${errMsg(err)}`);
-    }
-    if (descriptor.range === "unknown") {
-      // Bare name (`left-pad`, `@scope/pkg`): no range to resolve. Default
-      // to the latest caret range — same default npm applies — resolved via
-      // the registry so typos fail here with a clear error, not mid-install.
-      let version: string;
-      try {
-        version = (
-          await fetchNpmMeta(structUtils.stringifyIdent(descriptor), {
-            cwd: req.cwd,
-            registry: req.registry,
-          })
-        ).version;
-      } catch (err) {
-        throw new InstallError(`cannot resolve "${spec}": ${errMsg(err)}`);
-      }
-      if (!version || version === "n/a")
-        throw new InstallError(`cannot resolve "${spec}": no version published`);
-      descriptor = structUtils.makeDescriptor(descriptor, exact ? version : `^${version}`);
-    }
-    targets.push(descriptor);
-  }
-
-  if (req.dryRun) {
-    const where =
-      target.table === "peerDependencies" && target.optionalMeta === "peer"
-        ? "peerDependencies (optional)"
-        : target.table === "dependencies" && target.optionalMeta === "regular"
-          ? "optionalDependencies"
-          : target.table;
-    return {
-      ok: true,
-      message: `dry-run: would add ${targets.map((d) => structUtils.stringifyDescriptor(d)).join(", ")} to ${where}${wsSuffix} (linker: ${linker}) — nothing written`,
-    };
-  }
-
-  // Mirror `yarn add`: write the descriptors into the workspace manifest
-  // (nearest, or the --workspace selection), persist package.json, then run
-  // the project install.
-  // -O on a regular dep lands in optionalDependencies via ident-level
-  // dependenciesMeta (how the Manifest round-trips the field); -P -O lands
-  // in peerDependencies + peerDependenciesMeta.optional.
-  const manifest = workspace.manifest;
-  const table = manifest[target.table];
-  for (const descriptor of targets) {
-    table.set(descriptor.identHash, descriptor);
-    if (target.optionalMeta === "regular") {
-      const identDescriptor = structUtils.makeDescriptor(descriptor, "unknown");
-      Object.assign(manifest.ensureDependencyMeta(identDescriptor), { optional: true });
-    } else if (target.optionalMeta === "peer") {
-      const identDescriptor = structUtils.makeDescriptor(descriptor, "unknown");
-      Object.assign(manifest.ensurePeerDependencyMeta(identDescriptor), { optional: true });
-    }
-  }
-  await workspace.persistManifest();
-
-  const report = await StreamReport.start(
-    { configuration, stdout: process.stdout },
-    async (report) => {
-      const { project } = await Project.find(configuration, cwd);
-      const cache = await Cache.find(configuration);
-      await project.install({ cache, report });
-    },
-  );
-  if (report.hasErrors()) throw new InstallError("yarn install reported errors (see above)");
-  return {
-    ok: true,
-    message: `installed ${req.packages.join(", ")} via @yarnpkg/core${wsSuffix}${ignored.length ? ` (ignored non-API flags: ${ignored.join(" ")})` : ""}`,
-  };
-}
-
 // --- binary boundary: pnpm / bun / brew ------------------------------------
 // No official programmatic install API exists for these managers, so nps
 // shells out. Single place, same result type, no shell-string building
@@ -647,7 +354,6 @@ const BINARY_INSTALL_ARGS: Record<string, { normal: string[]; dev: string[] }> =
   bun: { normal: ["add"], dev: ["add", "--dev"] },
   pnpm: { normal: ["add"], dev: ["add", "--save-dev"] },
   brew: { normal: ["install"], dev: ["install"] },
-  // Fallback target for non-registry specs under --pm yarn (see installWithYarn).
   yarn: { normal: ["add"], dev: ["add", "--dev"] },
 };
 
@@ -661,6 +367,21 @@ function binaryWorkspaceFlags(pm: string, workspace: string | null): string[] {
   return ["--filter", workspace];
 }
 
+/**
+ * `--registry` for binaries without a flag: yarn reads it from the
+ * environment (berry: YARN_NPM_REGISTRY_SERVER, classic: npm_config_registry),
+ * so the override still wins over .yarnrc without touching project files.
+ */
+function binaryRegistryEnv(pm: string, registry: string | null | undefined): NodeJS.ProcessEnv {
+  if (!registry || pm !== "yarn") return {};
+  return { YARN_NPM_REGISTRY_SERVER: registry, npm_config_registry: registry };
+}
+
+/** yarn spells exact pinning --exact; the wrapper accepts npm's --save-exact. */
+function yarnExtraArgs(pm: string, extraArgs: string[]): string[] {
+  return pm === "yarn" ? extraArgs.map((a) => (a === "--save-exact" ? "--exact" : a)) : extraArgs;
+}
+
 async function installWithBinary(pm: string, req: InstallRequest): Promise<InstallResult> {
   const entry = BINARY_INSTALL_ARGS[pm];
   if (!entry) throw new InstallError(`unsupported package manager: ${pm}`);
@@ -668,17 +389,19 @@ async function installWithBinary(pm: string, req: InstallRequest): Promise<Insta
     throw new InstallError("cannot combine --dev with --peer or --optional");
   }
   const wsSuffix = req.workspace ? ` (workspace: ${req.workspace})` : "";
-  // --registry is native to the pnpm/bun CLIs; the yarn binary has no such
-  // flag (its project .yarnrc.yml owns the registry).
+  // --registry is native to the pnpm/bun CLIs; yarn gets it via env.
   const registryArgs =
     req.registry && (pm === "pnpm" || pm === "bun") ? ["--registry", req.registry] : [];
+  // yarn targets a workspace with `yarn workspace <name> add …`.
+  const yarnWorkspace = pm === "yarn" && req.workspace ? ["workspace", req.workspace] : [];
   const args = [
+    ...yarnWorkspace,
     ...(req.dev ? entry.dev : entry.normal),
     ...binarySaveFlags(pm, req),
     ...req.packages,
     ...binaryWorkspaceFlags(pm, req.workspace),
     ...registryArgs,
-    ...req.extraArgs,
+    ...yarnExtraArgs(pm, req.extraArgs),
   ];
   if (req.dryRun) {
     return {
@@ -686,7 +409,7 @@ async function installWithBinary(pm: string, req: InstallRequest): Promise<Insta
       message: `dry-run: would run \`${pm} ${args.join(" ")}\` — nothing executed`,
     };
   }
-  const code = await spawnPm(pm, args, req.cwd);
+  const code = await spawnPm(pm, args, req.cwd, binaryRegistryEnv(pm, req.registry));
   if (code !== 0) throw new InstallError(`${pm} exited with code ${code}`);
   return { ok: true, message: `installed ${req.packages.join(", ")} via ${pm}${wsSuffix}` };
 }
@@ -711,14 +434,19 @@ export async function performPassthrough(
   return spawnPm(pm, args, cwd);
 }
 
-function spawnPm(pm: string, args: string[], cwd: string): Promise<number> {
+function spawnPm(
+  pm: string,
+  args: string[],
+  cwd: string,
+  env: NodeJS.ProcessEnv = {},
+): Promise<number> {
   // Async spawn (not spawnSync): the event loop must keep turning so the
   // dots spinner in cli.ts animates while the child runs. stdio stays
   // inherited, so the child's own progress still paints as before.
   return new Promise((resolve, reject) => {
     let child: ReturnType<typeof spawn>;
     try {
-      child = spawn(pm, args, { stdio: "inherit", cwd });
+      child = spawn(pm, args, { stdio: "inherit", cwd, env: { ...process.env, ...env } });
     } catch (err) {
       reject(new InstallError(`failed to start \`${pm}\` (cwd: ${cwd}): ${errMsg(err)}`));
       return;

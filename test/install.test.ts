@@ -3,18 +3,14 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  applyYarnRegistryOverride,
   binarySaveFlags,
   engineFor,
   InstallError,
-  loadYarnConfiguration,
   npmSaveTypeFor,
   performInstall,
   performPassthrough,
   resolveNpmWorkspace,
-  selectYarnWorkspace,
   splitExactFlag,
-  yarnTargetFor,
 } from "../src/install.ts";
 import type { InstallRequest } from "../src/types.ts";
 
@@ -52,34 +48,6 @@ describe("npmSaveTypeFor", () => {
   test("dev with peer/optional throws", () => {
     expect(() => npmSaveTypeFor({ dev: true, peer: true, optional: false })).toThrow(InstallError);
     expect(() => npmSaveTypeFor({ dev: true, peer: false, optional: true })).toThrow(InstallError);
-  });
-});
-
-describe("yarnTargetFor", () => {
-  test("maps each flag to the manifest table", () => {
-    expect(yarnTargetFor({ dev: false, peer: false, optional: false })).toEqual({
-      table: "dependencies",
-      optionalMeta: null,
-    });
-    expect(yarnTargetFor({ dev: true, peer: false, optional: false })).toEqual({
-      table: "devDependencies",
-      optionalMeta: null,
-    });
-    expect(yarnTargetFor({ dev: false, peer: true, optional: false })).toEqual({
-      table: "peerDependencies",
-      optionalMeta: null,
-    });
-    expect(yarnTargetFor({ dev: false, peer: false, optional: true })).toEqual({
-      table: "dependencies",
-      optionalMeta: "regular",
-    });
-    expect(yarnTargetFor({ dev: false, peer: true, optional: true })).toEqual({
-      table: "peerDependencies",
-      optionalMeta: "peer",
-    });
-  });
-  test("dev with peer/optional throws", () => {
-    expect(() => yarnTargetFor({ dev: true, peer: true, optional: false })).toThrow(InstallError);
   });
 });
 
@@ -154,39 +122,10 @@ describe("resolveNpmWorkspace", () => {
   });
 });
 
-describe("selectYarnWorkspace", () => {
-  function fakeProject() {
-    return {
-      cwd: "/proj",
-      workspaces: [
-        { cwd: "/proj", manifest: { name: null } },
-        { cwd: "/proj/packages/api", manifest: { name: "api" } },
-      ],
-    };
-  }
-  function fakeUtils() {
-    return { stringifyIdent: (ident: unknown) => String(ident) };
-  }
-
-  test("matches by package name", () => {
-    const ws = selectYarnWorkspace(fakeProject() as never, "api", fakeUtils() as never);
-    expect(String(ws.cwd)).toBe("/proj/packages/api");
-  });
-  test("matches by relative directory", () => {
-    const ws = selectYarnWorkspace(fakeProject() as never, "packages/api", fakeUtils() as never);
-    expect(String(ws.cwd)).toBe("/proj/packages/api");
-  });
-  test("unknown name lists available workspaces", () => {
-    expect(() => selectYarnWorkspace(fakeProject() as never, "nope", fakeUtils() as never)).toThrow(
-      /available: .*api/,
-    );
-  });
-});
-
 describe("engineFor", () => {
   test("labels every manager", () => {
     expect(engineFor("npm")).toContain("arborist");
-    expect(engineFor("yarn")).toContain("core");
+    expect(engineFor("yarn")).toContain("binary");
     expect(engineFor("pnpm")).toContain("binary");
     expect(engineFor("bun")).toContain("binary");
     expect(engineFor("brew")).toContain("binary");
@@ -205,9 +144,16 @@ describe("performInstall guards", () => {
     await expect(performInstall("wat", req())).rejects.toThrow(InstallError);
   });
   test("empty packages does project install (dry-run)", async () => {
-    const res = await performInstall("npm", req({ packages: [], dryRun: true }));
-    expect(res.ok).toBe(true);
-    expect(res.message).toContain("project dependencies");
+    // Empty temp project: resolving the repo's own tree would hit the network.
+    const dir = mkdtempSync(join(tmpdir(), "nps-npm-empty-"));
+    try {
+      writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "probe", version: "0.0.0" }));
+      const res = await performInstall("npm", req({ cwd: dir, packages: [], dryRun: true }));
+      expect(res.ok).toBe(true);
+      expect(res.message).toContain("project dependencies");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -259,38 +205,6 @@ describe("binary boundary (dry-run only, no spawn)", () => {
   });
 });
 
-describe("applyYarnRegistryOverride", () => {
-  test("flag wins over .yarnrc.yml", async () => {
-    const core = await import("@yarnpkg/core");
-    const dir = mkdtempSync(join(tmpdir(), "nps-yarn-reg-"));
-    try {
-      writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "probe", version: "0.0.0" }));
-      writeFileSync(join(dir, ".yarnrc.yml"), "npmRegistryServer: https://rc.example.com\n");
-      const { configuration, portableCwd } = await loadYarnConfiguration(core, dir);
-      expect(configuration.get("npmRegistryServer")).toBe("https://rc.example.com");
-      applyYarnRegistryOverride(configuration, "https://flag.example.com", portableCwd);
-      expect(configuration.get("npmRegistryServer")).toBe("https://flag.example.com");
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-  test("plugin-provided rc settings no longer crash the load", async () => {
-    const core = await import("@yarnpkg/core");
-    const dir = mkdtempSync(join(tmpdir(), "nps-yarn-reg-"));
-    try {
-      writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "probe", version: "0.0.0" }));
-      writeFileSync(
-        join(dir, ".yarnrc.yml"),
-        "npmRegistryServer: https://rc.example.com\nnpmAuthToken: tok123\n",
-      );
-      const { configuration } = await loadYarnConfiguration(core, dir);
-      expect(configuration.get("npmRegistryServer")).toBe("https://rc.example.com");
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
 describe("performPassthrough", () => {
   test("unknown manager throws", async () => {
     await expect(performPassthrough("wat", [], process.cwd(), true)).rejects.toThrow(InstallError);
@@ -312,146 +226,37 @@ describe("performPassthrough", () => {
   });
 });
 
-describe("yarn engine dry-runs (no network: ranged specs only)", () => {
-  function yarnDir(withManifest: boolean): string {
-    const dir = mkdtempSync(join(tmpdir(), "nps-yarn-"));
-    if (withManifest) {
-      writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "probe", version: "0.0.0" }));
-    }
-    return dir;
-  }
-
-  test("ranged spec resolves the plan without touching disk", async () => {
-    const dir = yarnDir(true);
-    try {
-      const res = await performInstall("yarn", req({ cwd: dir, packages: ["left-pad@^1"] }));
-      expect(res.ok).toBe(true);
-      expect(res.message).toContain("would add");
-      expect(res.message).toContain("dependencies");
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+describe("yarn binary dry-runs", () => {
+  test("add maps dev/peer/optional to yarn flags", async () => {
+    const dev = await performInstall("yarn", req({ packages: ["a@^1"], dev: true }));
+    expect(dev.message).toContain("yarn add --dev a@^1");
+    const peer = await performInstall("yarn", req({ packages: ["a@^1"], peer: true }));
+    expect(peer.message).toContain("yarn add --peer a@^1");
+    const both = await performInstall(
+      "yarn",
+      req({ packages: ["a@^1"], peer: true, optional: true }),
+    );
+    expect(both.message).toContain("--peer --optional");
   });
-  test("dev flag targets devDependencies", async () => {
-    const dir = yarnDir(true);
-    try {
-      const res = await performInstall("yarn", req({ cwd: dir, packages: ["a@^1"], dev: true }));
-      expect(res.message).toContain("devDependencies");
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+  test("workspace uses `yarn workspace <name> add`", async () => {
+    const res = await performInstall("yarn", req({ packages: ["a@^1"], workspace: "api" }));
+    expect(res.message).toContain("yarn workspace api add a@^1");
   });
-  test("peer flag targets peerDependencies", async () => {
-    const dir = yarnDir(true);
-    try {
-      const res = await performInstall("yarn", req({ cwd: dir, packages: ["a@^1"], peer: true }));
-      expect(res.message).toContain("peerDependencies");
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+  test("--save-exact is translated to --exact", async () => {
+    const res = await performInstall(
+      "yarn",
+      req({ packages: ["a@^1"], extraArgs: ["--save-exact"] }),
+    );
+    expect(res.message).toContain("--exact");
+    expect(res.message).not.toContain("--save-exact");
   });
-  test("optional flag targets optionalDependencies", async () => {
-    const dir = yarnDir(true);
-    try {
-      const res = await performInstall(
-        "yarn",
-        req({ cwd: dir, packages: ["a@^1"], optional: true }),
-      );
-      expect(res.message).toContain("optionalDependencies");
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-  test("peer + optional targets optional peer", async () => {
-    const dir = yarnDir(true);
-    try {
-      const res = await performInstall(
-        "yarn",
-        req({ cwd: dir, packages: ["a@^1"], peer: true, optional: true }),
-      );
-      expect(res.message).toContain("peerDependencies (optional)");
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-  test("workspace selects the named manifest", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "nps-yarn-ws-"));
-    try {
-      writeFileSync(
-        join(dir, "package.json"),
-        JSON.stringify({ name: "root", version: "0.0.0", workspaces: ["packages/*"] }),
-      );
-      mkdirSync(join(dir, "packages", "api"), { recursive: true });
-      writeFileSync(
-        join(dir, "packages", "api", "package.json"),
-        JSON.stringify({ name: "api", version: "0.0.0" }),
-      );
-      const res = await performInstall(
-        "yarn",
-        req({ cwd: dir, packages: ["a@^1"], workspace: "api" }),
-      );
-      expect(res.message).toContain("(workspace: api)");
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-  test("unknown workspace fails with available names", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "nps-yarn-ws-"));
-    try {
-      writeFileSync(
-        join(dir, "package.json"),
-        JSON.stringify({ name: "root", version: "0.0.0", workspaces: ["packages/*"] }),
-      );
-      mkdirSync(join(dir, "packages", "api"), { recursive: true });
-      writeFileSync(
-        join(dir, "packages", "api", "package.json"),
-        JSON.stringify({ name: "api", version: "0.0.0" }),
-      );
-      await expect(
-        performInstall("yarn", req({ cwd: dir, packages: ["a@^1"], workspace: "nope" })),
-      ).rejects.toThrow(/available: .*api/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+  test("bare project install runs `yarn install`", async () => {
+    const res = await performInstall("yarn", req({ packages: [] }));
+    expect(res.message).toContain("yarn install");
   });
   test("workspace on bare project install errors", async () => {
-    const dir = yarnDir(true);
-    try {
-      await expect(
-        performInstall("yarn", req({ cwd: dir, packages: [], workspace: "api" })),
-      ).rejects.toThrow(/cannot filter a project install/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-  test("workspace with non-registry specs errors", async () => {
-    const dir = yarnDir(true);
-    try {
-      await expect(
-        performInstall("yarn", req({ cwd: dir, packages: ["user/repo"], workspace: "api" })),
-      ).rejects.toThrow(/binary fallback cannot target a workspace/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-  test("invalid spec fails with a clear error", async () => {
-    const dir = yarnDir(true);
-    try {
-      await expect(performInstall("yarn", req({ cwd: dir, packages: ["@"] }))).rejects.toThrow(
-        /invalid package spec/,
-      );
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-  test("directory without a project fails with a clear error", async () => {
-    const dir = yarnDir(false);
-    try {
-      await expect(performInstall("yarn", req({ cwd: dir, packages: ["a@^1"] }))).rejects.toThrow(
-        /no yarn project/,
-      );
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+    await expect(performInstall("yarn", req({ packages: [], workspace: "api" }))).rejects.toThrow(
+      /cannot filter a project install/,
+    );
   });
 });

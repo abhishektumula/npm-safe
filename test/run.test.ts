@@ -179,7 +179,7 @@ describe("run", () => {
     expect(output()).toContain("not supported with npm");
     expect(process.exitCode).toBe(1);
   });
-  test("-g flag with yarn errors (in-process engine)", async () => {
+  test("-g flag with yarn errors", async () => {
     await run(["add", "pkgr1", "--global", "--dry-run", "--pm", "yarn"]);
     expect(output()).toContain("not supported with yarn");
     expect(process.exitCode).toBe(1);

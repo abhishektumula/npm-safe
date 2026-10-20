@@ -2,7 +2,7 @@
 // Same look as the default spinner in ora and most CLIs: braille dots
 // cycling on one line (`\r` rewrite) in cyan. Non-TTY / `TERM=dumb`
 // falls back to a static line so CI/logs stay readable. No `Bun.*`
-// APIs — runs under Node ≥18 and Bun. Frame helpers are pure for
+// APIs — runs under Node ≥20.17 and Bun. Frame helpers are pure for
 // tests; the interval driver is thin by design.
 import { c, paint } from "./colors.ts";
 

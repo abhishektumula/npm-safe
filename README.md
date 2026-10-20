@@ -42,7 +42,7 @@ names), enforces a policy in CI, and still covers existing projects with
 
 ## Install
 
-Try it with no install (Node ≥18):
+Try it with no install (Node ≥20.17):
 
 ```bash
 npx -y @hort/nps check express
@@ -175,8 +175,7 @@ then the `packageManager` field, defaulting to `npm`. Override with `--pm`.
 | Manager    | How nps installs                              |
 | ---------- | ---------------------------------------------- |
 | npm        | In-process via `@npmcli/arborist` (official engine) |
-| yarn       | In-process via `@yarnpkg/core` (official API)  |
-| pnpm/bun/brew | Their binaries (no programmatic API exists) |
+| yarn/pnpm/bun/brew | Their own binaries (argv-only spawn) |
 
 `run`, `test`, `exec`, `remove`, … always pass straight through.
 
@@ -231,7 +230,7 @@ never printed.
 | Odd results after a layout change | `nps cache-clear` |
 | Anything else | `nps doctor`, then re-run with `--verbose` |
 
-**Platforms:** macOS and Linux (Node ≥18). Windows is not supported yet.
+**Platforms:** macOS and Linux (Node ≥20.17). Windows is not supported yet.
 
 ## Contributing
 

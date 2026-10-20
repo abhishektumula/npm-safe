@@ -16,7 +16,7 @@
 // - Keys are versioned (`v1`) and include the registry URL for meta so a
 //   `--registry` run never reuses public data.
 // - Disabled via `NPS_NO_CACHE=1|true|off` (tests use this) or
-//   `NPS_CACHE_DIR` override for isolation. No Bun.* APIs — Node ≥18 safe.
+//   `NPS_CACHE_DIR` override for isolation. No Bun.* APIs — Node ≥20.17 safe.
 
 import { mkdirSync, readFileSync, rmSync, writeFile, writeFileSync } from "node:fs";
 import { join } from "node:path";

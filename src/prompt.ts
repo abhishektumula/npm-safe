@@ -1,6 +1,6 @@
 // Confirm prompt. Single keypress (`y` / `n`, no Enter) via raw mode;
 // falls back to node:readline where raw mode is unavailable. No `Bun.*`
-// APIs — runs under Node ≥18 and Bun. The answer parser is pure for tests.
+// APIs — runs under Node ≥20.17 and Bun. The answer parser is pure for tests.
 import { createInterface } from "node:readline";
 import { c, paint } from "./colors.ts";
 

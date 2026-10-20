@@ -55,15 +55,15 @@ stay attested while local publishes work. Publish by hand without the
 flag; add `--provenance` only on supported CI.
 
 `bun.lock` is committed, so installs are reproducible for contributors;
-the published tarball needs no lockfile. Engine deps
-(`@npmcli/arborist`, `@yarnpkg/*`) install automatically as
-`dependencies`.
+the published tarball needs no lockfile. `dist/` contains only our code
+(`--packages external`); the one engine dep, `@npmcli/arborist`, installs
+automatically as a `dependency`.
 
 ## Continuous integration
 
 - `.github/workflows/ci.yml` — every push/PR: `bun run check`,
   `bun test --coverage`, `bun audit`, build; then the built bundle is smoke
-  tested on Node 18/20/22 × Linux/macOS. Bun is pinned (bump it
+  tested on Node 20/22 × Linux/macOS. Bun is pinned (bump it
   deliberately).
 - `.github/workflows/smoke.yml` — weekly live canary against the real
   registry, Snyk and OSV; fails when the Snyk parser stops matching.

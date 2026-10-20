@@ -1,6 +1,6 @@
 {
   "name": "@hort/nps",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "nps: see package intel (deps, health) before you install — an npm wrapper",
   "type": "module",
   "bin": {
@@ -16,7 +16,7 @@
     "linux"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=20.17"
   },
   "publishConfig": {
     "access": "public"
@@ -44,7 +44,7 @@
     "start": "bun ./index.ts",
     "check": "bunx tsc --noEmit",
     "test": "bun test --coverage",
-    "build": "bun build ./index.ts --outdir ./dist --target node",
+    "build": "bun build ./index.ts --outdir ./dist --target node --packages external",
     "prepublishOnly": "bun run build && chmod +x dist/index.js",
     "lint": "biome lint .",
     "format": "biome format --write .",
@@ -56,11 +56,6 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
-    "@npmcli/arborist": "^10.0.2",
-    "@yarnpkg/core": "^4.9.1",
-    "@yarnpkg/fslib": "^3.1.5",
-    "@yarnpkg/plugin-nm": "^4.1.1",
-    "@yarnpkg/plugin-npm": "^3.7.1",
-    "@yarnpkg/plugin-pnp": "^4.2.1"
+    "@npmcli/arborist": "^9.9.3"
   }
 }

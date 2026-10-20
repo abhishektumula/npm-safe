@@ -246,7 +246,7 @@ export function registrySuffix(o: { registry: string | null }): string {
 export function helpText(): string {
   return `
   ${paint(c.pink, "◆ nps")} ${paint(c.dim, `v${VERSION} — npm wrapper with safety intel before you install`)}
-  ${paint(c.dim, "Runs on Node ≥18, Bun, and any runtime with fetch + Web APIs.")}
+  ${paint(c.dim, "Runs on Node ≥20.17, Bun, and any runtime with fetch + Web APIs.")}
 
   ${paint(c.cyan, "usage")}
     nps install <pkg...> [flags]     inspect, confirm, then install
@@ -297,11 +297,10 @@ export function helpText(): string {
     Non-registry specs (user/repo, file:, link:, tarball URLs) skip intel
     with a warning and install straight through.
     Manager is auto-detected from local lockfiles (+ packageManager field),
-    defaulting to npm. npm/yarn install in-process via their official
-    engines (@npmcli/arborist, @yarnpkg/core); pnpm/bun/brew fall back
-    to their binaries (no programmatic API exists). -g/--global is rejected
-    for the npm/yarn engines (local-project only) — use a binary manager
-    or run the global install directly. Unknown flags are forwarded to
+    defaulting to npm. npm installs in-process via its official engine
+    (@npmcli/arborist); yarn/pnpm/bun/brew run their own binaries.
+    -g/--global is rejected for npm/yarn (local-project only) — use pnpm,
+    bun or brew, or run the global install directly. Unknown flags are forwarded to
     binary installers; the engines map --save-exact/-E plus the -D/-P/-O
     save flags (--peer/-P means peer here: pnpm-native -P is re-emitted
     as --save-peer) and report the rest as ignored. -w/--workspace targets
@@ -417,13 +416,14 @@ export async function run(argv: string[]): Promise<void> {
   }
 
   // -g/--global installs can't run through the in-process engines
-  // (Arborist / @yarnpkg/core are local-project only — a silent local
-  // install would be worse than an error). Binary managers forward it.
+  // (Arborist is local-project only — a silent local install would be
+  // worse than an error), and yarn's global add isn't `add -g`. The other
+  // binary managers forward it.
   // Passthrough above is unaffected: it already spawns the real binary.
   const hasGlobalFlag = opts.extraArgs.some((a) => a === "-g" || a === "--global");
-  const usesInProcessEngine = pm === "npm" || pm === "yarn";
-  if (hasGlobalFlag && usesInProcessEngine) {
-    console.error(paint(c.red, `  ✖ -g/--global not supported with ${pm} (in-process engine).`));
+  const usesInProcessEngine = pm === "npm";
+  if (hasGlobalFlag && (usesInProcessEngine || pm === "yarn")) {
+    console.error(paint(c.red, `  ✖ -g/--global not supported with ${pm}.`));
     console.error(
       paint(
         c.dim,
@@ -444,11 +444,11 @@ export async function run(argv: string[]): Promise<void> {
     return;
   }
 
-  // --filter/-F only exist on the pnpm/bun CLIs. The npm/yarn engines have
+  // --filter/-F only exist on the pnpm/bun CLIs. npm and yarn have
   // no such flag, so reject it with the wrapper equivalent instead of
   // silently installing into the wrong manifest.
   const filterFlag = opts.extraArgs.find((a) => a === "--filter" || a === "-F");
-  if (filterFlag && usesInProcessEngine) {
+  if (filterFlag && (usesInProcessEngine || pm === "yarn")) {
     console.error(
       paint(c.red, `  ✖ ${filterFlag} is not supported with ${pm} — use -w/--workspace <name>.`),
     );

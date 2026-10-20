@@ -5,6 +5,25 @@ versions follow semver (minor bumps may change CLI output while < 1.0).
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-10-20
+
+Supply-chain hardening after Socket.dev flagged the published package.
+
+### Changed
+- `dist/` no longer bundles dependencies (5 MB -> ~110 KB): third-party code
+  (`eval`, `new Function`, `child_process`, env/network access in
+  arborist/yarn) was being attributed to `@hort/nps` itself. Dependencies
+  now install normally as declared `dependencies`.
+- yarn installs now run the `yarn` binary (like pnpm/bun) instead of the
+  in-process `@yarnpkg/core` engine. That package pins `got` with a
+  yarn-only `patch:` spec, which made **2.0.0 uninstallable with npm**
+  (`EUNSUPPORTEDPROTOCOL`). All `@yarnpkg/*` dependencies are gone, which
+  also clears the `braces` audit advisory. `--registry` reaches yarn via
+  `YARN_NPM_REGISTRY_SERVER`; `-w` maps to `yarn workspace <name> add`;
+  `--save-exact` maps to `--exact`.
+- Minimum Node is now 20.17 (Node 18 is EOL); `@npmcli/arborist` ^9.9.3 pulls
+  patched `pacote` and `sigstore`, clearing their audit advisories.
+
 ### Fixed
 - Local `npm publish` no longer fails with `Automatic provenance generation
   not supported for provider: null`: `provenance` removed from

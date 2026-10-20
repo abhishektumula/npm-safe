@@ -71,24 +71,23 @@ in parallel, then `countTransitive` + `fetchVulns`) → `render()` (or the
 
 - npm installs **in-process** via `@npmcli/arborist`
   (`buildIdealTree({ add })` → `reify()`). Never shell out for npm.
-- yarn installs **in-process** via `@yarnpkg/core`
-  (`Configuration.find` → activate `plugin-npm` + both linker plugins →
-  descriptors into workspace manifest → `persistManifest()` →
-  `project.install({ cache, report })`). Activate plugins *before* reading
-  config keys — settings like `nodeLinker` are plugin-contributed.
-- pnpm / bun / brew have **no programmatic install API** (pnpm ≥12 is a
-  native binary; bun is a single CLI-only binary). They go through the one
-  argv-only spawn boundary in `src/install.ts` — never build shell strings.
+- yarn / pnpm / bun / brew are **spawned binaries**. `@yarnpkg/core` must not
+  come back: it pins `got` with a yarn-only `patch:` spec, so any package
+  depending on it cannot be installed with npm, and it is most of the
+  third-party code Socket.dev flagged. They go through the one argv-only
+  spawn boundary in `src/install.ts` — never build shell strings.
+- `dist/` is built with `--packages external`: never bundle dependencies
+  (bundled third-party `eval`/`child_process`/network code gets attributed
+  to this package by supply-chain scanners).
 - Passthrough commands (`run`, `test`, `exec`, `remove`, …) are CLI-only
   surface in every manager: spawn via `performPassthrough`, argv only.
 - No `Bun.*` APIs in `src/` (`node:readline` for prompts, `process.argv`
-  shape) — the CLI must also run under Node ≥18.
+  shape) — the CLI must also run under Node ≥20.17.
 - Bare specs (`left-pad`) default to the latest caret range (`^x.y.z`,
   exact on `--save-exact`/`-E`) so typos fail at resolve time, not mid-install.
 - Non-registry specs (`user/repo`, `file:`, `link:`, tarball URLs, including
   `pkg@file:…` forms) skip intel with a warning and install straight
-  through. The yarn engine can't express them as descriptors, so those fall
-  back to the `yarn` binary.
+  through (every non-npm manager runs its own binary).
 - Bare `nps install` (no packages) performs a project install like the
   manager does — npm/yarn in-process, pnpm/bun/brew via `<pm> install`.
 - `-w`/`--workspace <name>` (also `-w` attached form) targets one workspace

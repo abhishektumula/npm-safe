@@ -21,9 +21,7 @@ jobs:
       - run: bun run lint
       - run: bun run format:check
       - run: bun test --coverage
-      # braces GHSA-vfj7-8cjw-p6xm has no published fix (transitive via
-      # micromatch in @yarnpkg/*); ignore only that advisory so new vulns still fail.
-      - run: bun audit --ignore GHSA-vfj7-8cjw-p6xm
+      - run: bun audit
       - run: bun run build
       - uses: actions/upload-artifact@v7
         with:
@@ -38,11 +36,11 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, macos-latest]
-        node: [18, 20, 22]
+        node: [20, 22]
     steps:
-      # Checkout supplies package.json ("type": "module"): Node 18 and 20.x
-      # before ESM detection only treat dist/index.js as ESM when a package.json
-      # above it says so, exactly like the published package layout.
+      # Checkout supplies package.json ("type": "module") and the runtime
+      # dependencies are installed, exactly like the published package layout
+      # (dist/ holds only our code; dependencies stay external).
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
@@ -51,7 +49,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
-      # Offline smoke: no network, no installs.
+      - run: npm install --omit=dev --ignore-scripts --no-audit --no-fund --no-package-lock
+      # Offline smoke: no network.
       - run: node dist/index.js --version
       - run: node dist/index.js --help
       - run: node dist/index.js completions bash
