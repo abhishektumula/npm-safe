@@ -17,6 +17,12 @@ versions follow semver (minor bumps may change CLI output while < 1.0).
   cards, `est` in compact rows and `health.source: "estimate"` in `--json`.
   `--min-score` gates on it, so a Snyk outage no longer blocks every
   install. Critical/high advisories and deprecation cap the estimate.
+- Signals: "fresh release" (version published under 48h ago — the usual
+  window before a hijacked release is pulled) and "no source repository
+  linked". Publish time comes from deps.dev, else the registry packument
+  (`publishedAt` in `--json`), so brand-new and private versions are covered.
+- Policy `minReleaseAgeHours`: block versions younger than N hours
+  (violation rule `release-age`; unknown publish time passes).
 
 ### Fixed
 - Health badges: "Inactive" was painted green (it contains "active").

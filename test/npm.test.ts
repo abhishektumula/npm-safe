@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { fetchNpmMeta, clearNpmInflight, resolveVersion, specPath } from "../src/npm.ts";
+import {
+  clearNpmInflight,
+  fetchNpmMeta,
+  fetchPublishedAt,
+  MAX_PACKUMENT_BYTES,
+  resolveVersion,
+  specPath,
+} from "../src/npm.ts";
 import { clearIntelCache } from "../src/cache.ts";
 import { clearDepsCache } from "../src/deps.ts";
 import { clearNpmrcCache } from "../src/npmrc.ts";
@@ -227,5 +234,47 @@ describe("fetchNpmMeta with a spec", () => {
     await expect(fetchNpmMeta("chalk", undefined, "^9")).rejects.toThrow(
       'no version of "chalk" matches "^9"',
     );
+  });
+});
+
+describe("fetchPublishedAt", () => {
+  function packument(body: unknown, status = 200, length?: number): string[] {
+    const seen: string[] = [];
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      seen.push(String(url));
+      return {
+        status,
+        ok: status < 400,
+        headers: { get: (h: string) => (h === "content-length" && length ? String(length) : null) },
+        text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
+      };
+    }) as unknown as typeof fetch;
+    return seen;
+  }
+  test("reads time[version] from the full packument and caches it", async () => {
+    const seen = packument({ time: { "1.0.0": "2026-10-21T00:00:00.000Z" } });
+    expect(await fetchPublishedAt("x", "1.0.0")).toBe("2026-10-21T00:00:00.000Z");
+    expect(await fetchPublishedAt("x", "1.0.0")).toBe("2026-10-21T00:00:00.000Z");
+    expect(seen).toEqual(["https://registry.npmjs.org/x"]);
+  });
+  test("unknown on missing version, bad dates, errors and oversize", async () => {
+    packument({ time: { "1.0.0": "garbage" } });
+    expect(await fetchPublishedAt("x", "1.0.0")).toBeNull();
+    packument({ time: {} });
+    expect(await fetchPublishedAt("y", "1.0.0")).toBeNull();
+    packument({}, 404);
+    expect(await fetchPublishedAt("z", "1.0.0")).toBeNull();
+    packument("{}", 200, MAX_PACKUMENT_BYTES + 1);
+    expect(await fetchPublishedAt("big", "1.0.0")).toBeNull();
+    packument("x".repeat(MAX_PACKUMENT_BYTES + 1));
+    expect(await fetchPublishedAt("big2", "1.0.0")).toBeNull();
+    packument("not json");
+    expect(await fetchPublishedAt("bad", "1.0.0")).toBeNull();
+  });
+  test("invalid input never fetches", async () => {
+    const seen = packument({});
+    expect(await fetchPublishedAt("../x", "1.0.0")).toBeNull();
+    expect(await fetchPublishedAt("x", "n/a")).toBeNull();
+    expect(seen.length).toBe(0);
   });
 });

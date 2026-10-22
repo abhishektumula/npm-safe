@@ -7,7 +7,8 @@
 //     "blockDeprecated": true,        block deprecated packages
 //     "blockVulnerabilities": "high", block when an advisory >= severity exists
 //     "allowedLicenses": ["MIT","ISC"], block anything else (unknown license too)
-//     "minWeeklyDownloads": 1000      block rarely-used packages (unknown passes)
+//     "minWeeklyDownloads": 1000,     block rarely-used packages (unknown passes)
+//     "minReleaseAgeHours": 72        block versions younger than this (unknown passes)
 //   }
 //   nps.config.json "sources": { "snyk": false }   skip the Snyk scrape
 // Fail-open on a malformed file (same rule as pmconfig): a config typo must
@@ -16,6 +17,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CONFIG_FILE } from "./pmconfig.ts";
+import { hoursSince } from "./signals.ts";
 import type { PackageReport } from "./types.ts";
 
 export type Severity = "low" | "moderate" | "high" | "critical";
@@ -27,12 +29,20 @@ export interface Policy {
   blockVulnerabilities: Severity | null;
   allowedLicenses: string[] | null;
   minWeeklyDownloads: number | null;
+  minReleaseAgeHours: number | null;
 }
 
 export interface Violation {
   /** package the rule fired on (as the user typed it) */
   query: string;
-  rule: "min-score" | "health-unknown" | "deprecated" | "vulnerable" | "license" | "downloads";
+  rule:
+    | "min-score"
+    | "health-unknown"
+    | "deprecated"
+    | "vulnerable"
+    | "license"
+    | "downloads"
+    | "release-age";
   message: string;
 }
 
@@ -43,6 +53,7 @@ export function emptyPolicy(): Policy {
     blockVulnerabilities: null,
     allowedLicenses: null,
     minWeeklyDownloads: null,
+    minReleaseAgeHours: null,
   };
 }
 
@@ -56,6 +67,9 @@ export function parsePolicy(raw: unknown): Policy {
     out.minScore = o.minScore;
   if (typeof o.minWeeklyDownloads === "number" && o.minWeeklyDownloads >= 0) {
     out.minWeeklyDownloads = o.minWeeklyDownloads;
+  }
+  if (typeof o.minReleaseAgeHours === "number" && o.minReleaseAgeHours >= 0) {
+    out.minReleaseAgeHours = o.minReleaseAgeHours;
   }
   if (o.blockDeprecated === true) out.blockDeprecated = true;
   if (typeof o.blockVulnerabilities === "string" && o.blockVulnerabilities in RANK) {
@@ -102,12 +116,13 @@ export function isActive(p: Policy): boolean {
     p.blockDeprecated ||
     p.blockVulnerabilities !== null ||
     p.allowedLicenses !== null ||
-    p.minWeeklyDownloads !== null
+    p.minWeeklyDownloads !== null ||
+    p.minReleaseAgeHours !== null
   );
 }
 
 /** Pure. Non-registry specs and failed lookups carry no intel, so they are skipped here. */
-export function evaluate(reports: PackageReport[], policy: Policy): Violation[] {
+export function evaluate(reports: PackageReport[], policy: Policy, now = Date.now()): Violation[] {
   const out: Violation[] = [];
   for (const r of reports) {
     if (r.isNonRegistry || !r.meta) continue;
@@ -155,6 +170,14 @@ export function evaluate(reports: PackageReport[], policy: Policy): Violation[] 
         query: r.query,
         rule: "downloads",
         message: `${name}: ${r.downloads} weekly downloads is below minWeeklyDownloads ${policy.minWeeklyDownloads}`,
+      });
+    }
+    const age = hoursSince(r.publishedAt, now);
+    if (policy.minReleaseAgeHours !== null && age !== null && age < policy.minReleaseAgeHours) {
+      out.push({
+        query: r.query,
+        rule: "release-age",
+        message: `${name}: published ${Math.floor(age)}h ago, under minReleaseAgeHours ${policy.minReleaseAgeHours}`,
       });
     }
     if (policy.allowedLicenses) {

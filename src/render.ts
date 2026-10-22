@@ -81,6 +81,13 @@ export function signalWarnings(r: PackageReport): string[] {
     out.push(`runs code on install: ${s.installScripts.join(", ")} script`);
   }
   if (s.lowDownloads) out.push("rarely used (under 100 downloads/week)");
+  if (s.freshRelease) {
+    const age = ageText(r.publishedAt ?? null);
+    out.push(
+      `fresh release (published ${age ?? "recently"}) — hijacked versions are usually pulled within days`,
+    );
+  }
+  if (s.noRepo) out.push("no source repository linked");
   if (s.lookalike)
     out.push(`name is close to popular package "${s.lookalike}" — check for a typosquat`);
   return out;
@@ -226,6 +233,7 @@ function compactFlags(r: PackageReport): string {
   const bits: string[] = [];
   if (r.vulns && r.vulns.count > 0) bits.push(paint(c.red, `${r.vulns.count} vuln`));
   if (r.signals?.deprecated) bits.push(paint(c.orange, "deprecated"));
+  if (r.signals?.freshRelease) bits.push(paint(c.orange, "fresh"));
   if (r.signals && r.signals.installScripts.length > 0)
     bits.push(paint(c.orange, "install-script"));
   if (r.signals?.lookalike) bits.push(paint(c.orange, `~${r.signals.lookalike}?`));

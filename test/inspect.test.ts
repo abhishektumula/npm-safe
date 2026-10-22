@@ -89,6 +89,31 @@ describe("inspectOne", () => {
     expect(seen).toContain("https://registry.npmjs.org/pkgv/2.0.0");
     expect(seen).toContain("osv:2.0.0");
   });
+  test("publish time falls back to the registry when deps.dev has none", async () => {
+    const justNow = new Date(Date.now() - 2 * 3_600_000).toISOString();
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes("security.snyk.io"))
+        return { status: 200, ok: true, text: async () => HEALTH_HTML };
+      if (u.includes("api.deps.dev")) return { status: 404, ok: false };
+      if (u === "https://registry.npmjs.org/pkgfresh") {
+        return {
+          status: 200,
+          ok: true,
+          text: async () => JSON.stringify({ time: { "1.0.1": justNow } }),
+        };
+      }
+      return {
+        status: 200,
+        ok: true,
+        json: async () => ({ name: "pkgfresh", version: "1.0.1", dependencies: {} }),
+      };
+    }) as unknown as typeof fetch;
+    const r = await inspectOne("pkgfresh");
+    expect(r.publishedAt).toBe(justNow);
+    expect(r.signals?.freshRelease).toBe(true);
+    expect(r.signals?.noRepo).toBe(true);
+  });
   test("missing package keeps query and error", async () => {
     stubIntel({}, ["ghost"]);
     const r = await inspectOne("ghost");

@@ -15,7 +15,8 @@ is written**:
 - trust facts from deps.dev: OpenSSF Scorecard, GitHub stars, verified
   build provenance, and how long ago the version was published
 - red flags: deprecated, runs code on install, name close to a popular
-  package (typosquat)
+  package (typosquat), fresh release (published under 48h ago), no source
+  repository linked
 
 …then a `[y/N]` prompt. Confirm and it installs through your project's
 own package manager. 3+ packages collapse to compact rows.
@@ -150,14 +151,19 @@ Or per project in `nps.config.json`:
     "minScore": 60,
     "blockDeprecated": true,
     "blockVulnerabilities": "high",
-    "allowedLicenses": ["MIT", "ISC", "Apache-2.0"]
+    "allowedLicenses": ["MIT", "ISC", "Apache-2.0"],
+    "minWeeklyDownloads": 1000,
+    "minReleaseAgeHours": 72
   }
 }
 ```
 
 `blockVulnerabilities` takes `low | moderate | high | critical` and blocks
 when an advisory at or above that severity exists (advisories with no stated
-severity always count). `--min-score` overrides the file. A malformed file
+severity always count). `minReleaseAgeHours` blocks versions published
+more recently than that (hijacked releases are usually caught and pulled
+within days); an unknown publish time passes, like unknown downloads.
+`--min-score` overrides the file. A malformed file
 fails open to "no policy", like the manager config below.
 
 ### Exit codes

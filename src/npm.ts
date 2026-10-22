@@ -1,7 +1,7 @@
 import semver from "semver";
 import type { NpmMeta } from "./types.ts";
 import { fetchWithRetry } from "./fetch.ts";
-import { getCache, getCacheStale, metaKey, META_TTL_MS, setCache } from "./cache.ts";
+import { CACHE_VERSION, getCache, getCacheStale, metaKey, META_TTL_MS, setCache } from "./cache.ts";
 import { encodePkg, isValidPkgName } from "./spec.ts";
 import { vlog } from "./log.ts";
 import { authHeaders, loadNpmrc, nerf, registryFor } from "./npmrc.ts";
@@ -205,5 +205,49 @@ export async function fetchNpmMeta(
     return await p;
   } finally {
     if (inflight.get(key) === p) inflight.delete(key);
+  }
+}
+
+/** Full packuments of huge packages run to tens of MB: never buffer past this. */
+export const MAX_PACKUMENT_BYTES = 10_000_000;
+
+/**
+ * Publish time of name@version from the full packument's `time` map — the
+ * fallback when deps.dev hasn't indexed a version yet (brand-new releases,
+ * exactly the ones worth a second look) or the registry is private.
+ * Never throws: null = unknown. Publish times are immutable, so hits are
+ * cached for 30 days.
+ */
+export async function fetchPublishedAt(
+  name: string,
+  version: string,
+  opts?: FetchMetaOptions,
+): Promise<string | null> {
+  if (!isValidPkgName(name) || !version || version === "n/a") return null;
+  const cfg = loadNpmrc(opts?.cwd ?? process.cwd());
+  const registry = registryFor(name, cfg, opts?.registry);
+  const key = `pubtime:${CACHE_VERSION}:${registry}:${name.toLowerCase()}@${version}`;
+  const cached = getCache<string>(key);
+  if (typeof cached === "string") return cached;
+  try {
+    const res = await fetchWithRetry(
+      `${registry}/${encodePkg(name)}`,
+      { headers: { Accept: "application/json", ...authHeaders(registry, cfg) } },
+      { timeoutMs: 8000 },
+    );
+    if (!res.ok) return null;
+    const declared = Number(res.headers?.get?.("content-length") ?? 0);
+    if (Number.isFinite(declared) && declared > MAX_PACKUMENT_BYTES) return null;
+    const text = await res.text();
+    if (text.length > MAX_PACKUMENT_BYTES) return null;
+    const t = (JSON.parse(text) as { time?: Record<string, unknown> }).time?.[version];
+    if (typeof t !== "string" || !Number.isFinite(Date.parse(t))) return null;
+    setCache(key, t, 30 * META_TTL_MS);
+    return t;
+  } catch (err) {
+    vlog(
+      `${name}@${version}: publish time unavailable (${err instanceof Error ? err.message : err})`,
+    );
+    return null;
   }
 }

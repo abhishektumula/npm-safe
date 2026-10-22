@@ -160,8 +160,13 @@ describe("parallel intel", () => {
           text: async () => `<span class="score-number">80/100</span>`,
         };
       }
-      if (u.includes("api.osv.dev") || u.includes("api.npmjs.org") || u.includes("api.deps.dev")) {
+      if (u.includes("api.osv.dev") || u.includes("api.npmjs.org")) {
         return { status: 200, ok: true, text: async () => "{}" };
+      }
+      if (u.includes("api.deps.dev")) {
+        // A publish time here keeps inspectOne off the registry packument fallback.
+        const doc = { publishedAt: "2020-01-01T00:00:00Z" };
+        return { status: 200, ok: true, text: async () => JSON.stringify(doc) };
       }
       calls++;
       active++;

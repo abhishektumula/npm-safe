@@ -227,6 +227,28 @@ describe("nps estimate health", () => {
   });
 });
 
+describe("fresh-release and no-repo signals", () => {
+  const signals = {
+    deprecated: null,
+    installScripts: [],
+    lookalike: null,
+    freshRelease: true,
+    noRepo: true,
+  };
+  test("card warns with the publish age", () => {
+    const hourAgo = new Date(Date.now() - 3 * 3_600_000).toISOString();
+    const card = stripAnsi(render([report({ signals, publishedAt: hourAgo })], false));
+    expect(card).toContain("fresh release (published 3h ago)");
+    expect(card).toContain("no source repository linked");
+    const unknown = stripAnsi(render([report({ signals })], false));
+    expect(unknown).toContain("fresh release (published recently)");
+  });
+  test("compact rows flag fresh", () => {
+    const rows = stripAnsi(render([report(), report({ signals }), report()], false));
+    expect(rows).toContain("fresh");
+  });
+});
+
 describe("deps.dev trust line", () => {
   const now = Date.parse("2026-10-22T00:00:00Z");
   const project = {

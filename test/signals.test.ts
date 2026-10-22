@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { closest, editDistance, lookalikeOf, signalsOf } from "../src/signals.ts";
+import {
+  closest,
+  editDistance,
+  FRESH_HOURS,
+  hoursSince,
+  lookalikeOf,
+  signalsOf,
+} from "../src/signals.ts";
 import type { NpmMeta } from "../src/types.ts";
 
 const meta = (over: Partial<NpmMeta>): NpmMeta => ({
@@ -51,6 +58,8 @@ describe("signalsOf", () => {
       installScripts: ["postinstall"],
       lookalike: null,
       lowDownloads: false,
+      freshRelease: false,
+      noRepo: true,
     });
   });
   test("defaults when fields are absent (old cache entries)", () => {
@@ -59,7 +68,26 @@ describe("signalsOf", () => {
       installScripts: [],
       lookalike: null,
       lowDownloads: false,
+      freshRelease: false,
+      noRepo: true,
     });
+  });
+  test("fresh releases and missing repos", () => {
+    const now = Date.parse("2026-10-22T12:00:00Z");
+    const m = meta({ name: "plainpkg", repoUrl: "https://github.com/a/b" });
+    expect(signalsOf(m, null, "2026-10-22T00:00:00Z", now).freshRelease).toBe(true);
+    expect(signalsOf(m, null, "2026-10-01T00:00:00Z", now).freshRelease).toBe(false);
+    expect(signalsOf(m, null, null, now).freshRelease).toBe(false);
+    expect(signalsOf(m).noRepo).toBe(false);
+    expect(signalsOf(meta({ name: "plainpkg", repoUrl: "" })).noRepo).toBe(true);
+  });
+  test("hoursSince", () => {
+    const now = Date.parse("2026-10-22T12:00:00Z");
+    expect(hoursSince("2026-10-22T00:00:00Z", now)).toBe(12);
+    expect(hoursSince("2026-10-23T00:00:00Z", now)).toBe(0);
+    expect(hoursSince("nope", now)).toBeNull();
+    expect(hoursSince(undefined, now)).toBeNull();
+    expect(FRESH_HOURS).toBe(48);
   });
   test("scoped packages never count as lookalikes", () => {
     expect(signalsOf(meta({ name: "@me/expresss" })).lookalike).toBeNull();

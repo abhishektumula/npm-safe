@@ -45,7 +45,7 @@ what rules are load-bearing, and exactly when to commit.
 | `src/score.ts`     | `estimateHealth()`: pure fallback score from OSV/downloads/deps.dev when Snyk has none (`source: "estimate"`) | Weights, caps, labels |
 | `src/osv.ts`       | OSV.dev advisories for name@version (POST, structured JSON) | Advisory source changes                    |
 | `src/depsdev.ts`   | deps.dev for name@version: publish time, provenance, OpenSSF Scorecard, stars (public npm only) | Trust facts, repo verification |
-| `src/signals.ts`   | Local red flags: deprecated, install scripts, typosquat lookalikes; `closest()` for did-you-mean | Signal rules, popular-name list |
+| `src/signals.ts`   | Local red flags: deprecated, install scripts, typosquat lookalikes, fresh release (`FRESH_HOURS`), no repo; `closest()` for did-you-mean | Signal rules, popular-name list |
 | `src/policy.ts`    | `--min-score` + `nps.config.json` `policy` → `evaluate()` violations (exit 3) | Block rules |
 | `src/commands.ts`  | nps-native commands: `scan`, `doctor`, `cache-clear`, `completions`, `alias` | New non-install commands |
 | `src/completions.ts` | Static bash/zsh/fish scripts + alias snippet      | Command/flag list changes (keep in sync with help) |

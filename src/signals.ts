@@ -5,6 +5,15 @@ import { POPULAR } from "./popular.ts";
 
 const POPULAR_SET = new Set(POPULAR);
 
+/** Versions younger than this get a "fresh release" warning. */
+export const FRESH_HOURS = 48;
+
+/** Hours since an ISO time; null when unknown/unparsable. Pure. */
+export function hoursSince(iso: string | null | undefined, now = Date.now()): number | null {
+  const t = iso ? Date.parse(iso) : NaN;
+  return Number.isFinite(t) ? Math.max(0, (now - t) / 3_600_000) : null;
+}
+
 /** Damerau-free Levenshtein with an early-out bound. Pure. */
 export function editDistance(a: string, b: string, max = 2): number {
   if (Math.abs(a.length - b.length) > max) return max + 1;
@@ -45,9 +54,17 @@ export function lookalikeOf(name: string): string | null {
   return best;
 }
 
-export function signalsOf(meta: NpmMeta, downloads: number | null = null): Signals {
+export function signalsOf(
+  meta: NpmMeta,
+  downloads: number | null = null,
+  publishedAt: string | null = null,
+  now = Date.now(),
+): Signals {
+  const age = hoursSince(publishedAt, now);
   return {
     lowDownloads: downloads !== null && downloads < LOW_DOWNLOADS,
+    freshRelease: age !== null && age < FRESH_HOURS,
+    noRepo: !meta.repoUrl || meta.repoUrl === "n/a",
     deprecated: meta.deprecated ?? null,
     installScripts: meta.installScripts ?? [],
     // Scoped packages live in someone's namespace: not a lookalike of an unscoped name.

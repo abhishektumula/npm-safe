@@ -74,6 +74,11 @@ export interface Signals {
   lookalike: string | null;
   /** fewer than LOW_DOWNLOADS weekly downloads (rarely used, easy to impersonate) */
   lowDownloads?: boolean;
+  /** this version was published under FRESH_HOURS ago (hijacked releases are
+      usually caught and pulled within days) */
+  freshRelease?: boolean;
+  /** no repository URL in the manifest: the code can't be traced to a source */
+  noRepo?: boolean;
 }
 
 export interface PackageReport {
@@ -97,6 +102,8 @@ export interface PackageReport {
   downloads?: number | null;
   /** deps.dev: publish time, provenance, Scorecard, stars; null = unknown, absent = not queried */
   project?: Project | null;
+  /** ISO publish time of the inspected version (deps.dev, else registry); null = unknown */
+  publishedAt?: string | null;
   /** any source answered from an expired cache (offline fallback) */
   stale?: boolean;
 }

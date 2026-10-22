@@ -22,7 +22,7 @@ stops (policy still applies and sets the exit code).
 ```
 
 `violations[].rule`: `min-score` | `health-unknown` | `deprecated` |
-`vulnerable` | `license`.
+`vulnerable` | `license` | `downloads` | `release-age`.
 
 `PackageReport` (see `src/types.ts`):
 
@@ -33,7 +33,8 @@ stops (policy still applies and sets the exit code).
 | `metaError` | why `meta` is `null` |
 | `health` | `{ score: 0–100 \| null, breakdown, source?, unparsed?, skipped?, stale? }`; `source: "estimate"` = nps's own score (Snyk had none: `unparsed`/`skipped` say why), absent or `"snyk"` = Snyk |
 | `vulns` | `{ count, ids[≤10], worst, stale? }`; `null` = OSV unreachable; absent = not queried |
-| `signals` | `{ deprecated, installScripts[], lookalike, lowDownloads? }` |
+| `signals` | `{ deprecated, installScripts[], lookalike, lowDownloads?, freshRelease?, noRepo? }` |
+| `publishedAt` | ISO publish time of the inspected version (deps.dev, else the registry packument); `null` = unknown |
 | `downloads` | weekly npm downloads; `null` = unknown or private registry; absent = not queried |
 | `project` | deps.dev `{ publishedAt, provenance, repo, repoVerified, scorecard (0–10), maintained (0–10), stars, stale? }`; `null` = unknown/unreachable or private registry; absent = not queried. `stars` belong to the *claimed* repo unless `repoVerified` (provenance built from it) |
 | `directCount` / `transitiveCount` / `totalCount` | dependency counts (`scan` skips the crawl: transitive is 0) |

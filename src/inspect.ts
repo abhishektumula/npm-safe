@@ -1,7 +1,7 @@
 // Package inspection: registry metadata + health + transitive counts.
 // Pure orchestration over the intel sources — reusable without the CLI
 // (import inspectPackages for programmatic use).
-import { fetchNpmMeta, type FetchMetaOptions } from "./npm.ts";
+import { fetchNpmMeta, fetchPublishedAt, type FetchMetaOptions } from "./npm.ts";
 import { fetchHealth } from "./snyk.ts";
 import { countTransitive } from "./deps.ts";
 import { fetchWeeklyDownloads } from "./downloads.ts";
@@ -102,6 +102,10 @@ export async function inspectOne(query: string, opts?: InspectOptions): Promise<
     publicRegistry ? fetchProject(meta.name, vulnVersion) : Promise.resolve(null),
   ]);
   const { count, names, truncated } = crawl;
+  // deps.dev lags on brand-new versions and never sees private registries;
+  // the registry's own `time` map fills the gap.
+  const publishedAt =
+    project?.publishedAt ?? (await fetchPublishedAt(meta.name, vulnVersion, opts));
   // No Snyk score (unreachable, unparsable, disabled): estimate from the free
   // structured sources. The Snyk flags stay so the card can say why.
   let shown: Health = healthVal;
@@ -127,7 +131,8 @@ export async function inspectOne(query: string, opts?: InspectOptions): Promise<
     vulns,
     downloads,
     project,
-    signals: signalsOf(meta, downloads),
+    publishedAt,
+    signals: signalsOf(meta, downloads, publishedAt),
     stale: Boolean(meta.stale || healthVal.stale || vulns?.stale || project?.stale),
   });
 }

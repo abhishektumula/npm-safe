@@ -52,6 +52,7 @@ describe("parsePolicy", () => {
         blockVulnerabilities: "high",
         allowedLicenses: [" MIT ", "ISC"],
         minWeeklyDownloads: 500,
+        minReleaseAgeHours: 72,
       },
     });
     expect(p).toEqual({
@@ -60,6 +61,7 @@ describe("parsePolicy", () => {
       blockVulnerabilities: "high",
       allowedLicenses: ["mit", "isc"],
       minWeeklyDownloads: 500,
+      minReleaseAgeHours: 72,
     });
     expect(isActive(p)).toBe(true);
   });
@@ -70,6 +72,7 @@ describe("parsePolicy", () => {
         blockDeprecated: "yes",
         blockVulnerabilities: "huge",
         allowedLicenses: [],
+        minReleaseAgeHours: -1,
       },
     });
     expect(p).toEqual(emptyPolicy());
@@ -90,6 +93,16 @@ describe("evaluate", () => {
     expect(low[0]?.rule).toBe("min-score");
     const unknown = evaluate([report({ health: { score: null, breakdown: null } })], pol);
     expect(unknown[0]?.rule).toBe("health-unknown");
+  });
+  test("release-age rule blocks fresh versions, unknown passes", () => {
+    const now = Date.parse("2026-10-22T12:00:00Z");
+    const pol = { ...emptyPolicy(), minReleaseAgeHours: 72 };
+    const fresh = evaluate([report({ publishedAt: "2026-10-22T07:00:00Z" })], pol, now);
+    expect(fresh[0]?.rule).toBe("release-age");
+    expect(fresh[0]?.message).toBe("pkg@1.0.0: published 5h ago, under minReleaseAgeHours 72");
+    expect(evaluate([report({ publishedAt: "2026-01-01T00:00:00Z" })], pol, now)).toEqual([]);
+    expect(evaluate([report({ publishedAt: null })], pol, now)).toEqual([]);
+    expect(isActive(pol)).toBe(true);
   });
   test("deprecated rule", () => {
     const pol = { ...emptyPolicy(), blockDeprecated: true };
