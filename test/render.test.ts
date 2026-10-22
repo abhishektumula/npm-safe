@@ -197,6 +197,36 @@ describe("render compact rows", () => {
   });
 });
 
+describe("nps estimate health", () => {
+  const est = {
+    score: 72,
+    source: "estimate" as const,
+    breakdown: {
+      security: "2 known advisories",
+      popularity: "Small",
+      maintenance: "Inactive",
+      community: "Active",
+    },
+  };
+  test("card labels the estimate with why snyk had no score", () => {
+    const card = (h: object) => stripAnsi(render([report({ health: { ...est, ...h } })], false));
+    expect(card({})).toContain("72/100 ███████░░░  (nps estimate: snyk unreachable)");
+    expect(card({ skipped: true })).toContain("(nps estimate: snyk disabled)");
+    expect(card({ unparsed: true })).toContain("(nps estimate: snyk parse failed)");
+  });
+  test("compact rows mark estimates", () => {
+    const rows = stripAnsi(render([report(), report({ health: est }), report()], false));
+    expect(rows).toContain("health 72/100 est");
+  });
+  test("negative badges win over substrings (inactive is not active)", () => {
+    const out = render([report({ health: est })], false);
+    expect(out).toContain(`${c.orange}Inactive`);
+    expect(out).toContain(`${c.red}2 known advisories`);
+    expect(out).toContain(`${c.orange}Small`);
+    expect(out).toContain(`${c.green}Active`);
+  });
+});
+
 describe("deps.dev trust line", () => {
   const now = Date.parse("2026-10-22T00:00:00Z");
   const project = {

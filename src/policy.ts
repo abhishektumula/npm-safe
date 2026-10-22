@@ -123,7 +123,7 @@ export function evaluate(reports: PackageReport[], policy: Policy): Violation[] 
         out.push({
           query: r.query,
           rule: "min-score",
-          message: `${name}: health ${r.health.score}/100 is below min-score ${policy.minScore}`,
+          message: `${name}: health ${r.health.score}/100${r.health.source === "estimate" ? " (nps estimate)" : ""} is below min-score ${policy.minScore}`,
         });
       }
     }

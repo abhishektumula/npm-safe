@@ -7,7 +7,10 @@ is written**:
 - name + version, description, author, repo URL
 - direct / transitive / total dependency counts
 - Snyk health score `/100` with `security` / `popularity` /
-  `maintenance` / `community` breakdown
+  `maintenance` / `community` breakdown — when Snyk is unreachable,
+  unparsable or disabled (`--no-snyk`), an **nps estimate** from the free
+  structured sources (OSV advisories, weekly downloads, OpenSSF Scorecard,
+  publish recency) takes its place, labelled `(nps estimate: …)`
 - known advisories for that exact version (OSV.dev)
 - trust facts from deps.dev: OpenSSF Scorecard, GitHub stars, verified
   build provenance, and how long ago the version was published
@@ -95,7 +98,7 @@ globally directly.
 | `-E, --save-exact` | Pin the exact version instead of a `^` range |
 | `--registry <url>` | Use a private registry (`.npmrc` + `NPM_TOKEN` also work) |
 | `--pm <name>` | Force manager: `npm` \| `bun` \| `pnpm` \| `yarn` \| `brew`   |
-| `--min-score <n>` | Block (exit 3) when health is below `n`/100 or unknown    |
+| `--min-score <n>` | Block (exit 3) when health (Snyk, else nps estimate) is below `n`/100 or unknown |
 | `--dry-run`   | Show intel only, never install                                |
 | `--json`      | One versioned JSON document; never prompts ([schema](docs/json-schema.md)) |
 | `--verbose`   | Diagnostics on stderr: detection, cache hit/miss, timings, ignored flags |
@@ -200,6 +203,14 @@ or mistyped config fails open to all enabled.
 `--dev` is a no-op for `brew`. Health under 40/100, unreachable, or
 unparsable prints a warning before the prompt — never blocks.
 
+The nps estimate weighs security 30% (OSV advisories for the exact
+version; verified provenance tops it up), popularity 25% (weekly
+downloads, log scale), maintenance 25% (Scorecard `Maintained`, else
+publish recency) and community 20% (Scorecard overall, else stars).
+Unknown parts drop out; under two known parts it stays `n/a`. A critical
+advisory caps it at 25, high at 45, deprecation at 40 — popularity never
+outweighs a known-bad version.
+
 Private registries: `--registry`, `.npmrc` (`registry`,
 `@scope:registry`, `//host/:_authToken` with `${VAR}`), or `NPM_TOKEN` —
 for intel and install alike.
@@ -225,8 +236,9 @@ never printed.
 
 | Symptom | Fix |
 | ------- | --- |
-| `health n/a (snyk unreachable)` | Snyk is down or blocked. Run `nps doctor`. Install proceeds unless a policy is set; `--min-score` treats unknown as a failure |
-| `health n/a (snyk parse failed)` | Snyk changed its page layout. Open an issue; OSV advisories still work |
+| `(nps estimate: snyk unreachable)` | Snyk is down or blocked; the score comes from OSV/downloads/deps.dev instead. Run `nps doctor` |
+| `(nps estimate: snyk parse failed)` | Snyk changed its page layout; the estimate stands in. Open an issue |
+| `health n/a (snyk unreachable)` | Snyk *and* the free sources had too little data. Install proceeds unless a policy is set; `--min-score` treats unknown as a failure |
 | `registry responded 401/403` | Private registry: set `NPM_TOKEN`, `--registry`, or `.npmrc` auth |
 | Prompt never appears in CI | Not a TTY: pass `-y`, or use `nps check` as a gate |
 | `package manager "brew" is disabled` | `nps.config.json` disables it |

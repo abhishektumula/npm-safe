@@ -32,6 +32,9 @@ export interface Health {
   stale?: boolean;
   /** true when health lookup was switched off (--no-snyk / config) */
   skipped?: boolean;
+  /** where the score came from: the Snyk page, or nps's own estimate from
+      OSV/downloads/deps.dev when Snyk had no score (absent = snyk) */
+  source?: "snyk" | "estimate";
 }
 
 /** Known advisories for the inspected version (OSV.dev). */

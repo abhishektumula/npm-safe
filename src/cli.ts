@@ -333,7 +333,10 @@ export function warnOnLowHealth(
   );
   if (low.length > 0) {
     const names = low
-      .map((r) => `${sanitizeTerminal(r.meta?.name ?? r.query)} (${r.health.score}/100)`)
+      .map(
+        (r) =>
+          `${sanitizeTerminal(r.meta?.name ?? r.query)} (${r.health.score}/100${r.health.source === "estimate" ? " est" : ""})`,
+      )
       .join(", ");
     out(paint(c.red, `  ⚠ low health score: ${names} — review before installing`));
   }
@@ -585,7 +588,13 @@ export async function run(argv: string[]): Promise<void> {
   const unparsed = reports.filter((r) => r.health.unparsed);
   if (unparsed.length > 0) {
     const specs = unparsed.map((r) => r.query).join(", ");
-    say(paint(c.yellow, `  ⚠ snyk health unparsable (${specs}) — unknown, not healthy`));
+    const estimated = unparsed.every((r) => r.health.score !== null);
+    say(
+      paint(
+        c.yellow,
+        `  ⚠ snyk health unparsable (${specs}) — ${estimated ? "showing nps estimate from OSV/downloads/deps.dev" : "unknown, not healthy"}`,
+      ),
+    );
   }
 
   const registryFailed = reports.filter((r) => !r.isNonRegistry && r.meta === null);

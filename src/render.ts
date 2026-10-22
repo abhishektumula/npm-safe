@@ -6,7 +6,23 @@ import type { PackageReport } from "./types.ts";
 // A function, not a constant: paint() consults --no-color/NO_COLOR at call time.
 const rule = (): string => paint(c.blue, "─".repeat(52));
 
-function scoreText(score: number | null, unparsed?: boolean, skipped?: boolean): string {
+/** Why Snyk had no score, for labelling an nps estimate. */
+function snykGap(h: PackageReport["health"]): string {
+  if (h.skipped) return "snyk disabled";
+  if (h.unparsed) return "snyk parse failed";
+  return "snyk unreachable";
+}
+
+function scoreText(h: PackageReport["health"]): string {
+  const { score, unparsed, skipped } = h;
+  if (score !== null && h.source === "estimate") {
+    return (
+      paint(healthColor(score), `${score}/100`) +
+      " " +
+      healthBar(score) +
+      paint(c.white, `  (nps estimate: ${snykGap(h)})`)
+    );
+  }
   if (score === null && skipped) return paint(c.white, "n/a (snyk disabled)");
   if (score === null && unparsed) return paint(c.yellow, "n/a (snyk parse failed)");
   // White, not dim: dim grey is unreadable on translucent/blurred terminals.
@@ -72,9 +88,11 @@ export function signalWarnings(r: PackageReport): string[] {
 
 function badge(text: string): string {
   const t = text.toLowerCase();
+  // Negatives first: "inactive" contains "active".
+  if (/advisor|issues found/.test(t)) return paint(c.red, text);
+  if (/limited|inactive|review needed|small/.test(t)) return paint(c.orange, text);
   if (/no known|healthy|active|key|influential|popular/.test(t)) return paint(c.green, text);
   if (/sustain|moderate/.test(t)) return paint(c.yellow, text);
-  if (/limited|inactive|review needed/.test(t)) return paint(c.orange, text);
   return paint(c.white, text);
 }
 
@@ -161,9 +179,7 @@ function fullCard(r: PackageReport, showAll: boolean): string {
       `${paint(c.white, String(r.totalCount))}${paint(c.white, " total")}` +
       `${r.truncated ? paint(c.white, "  (partial: crawl hit its budget)") : ""}`,
   );
-  L.push(
-    `  ${paint(c.violet, "health ")} ${scoreText(r.health.score, r.health.unparsed, r.health.skipped)}`,
-  );
+  L.push(`  ${paint(c.violet, "health ")} ${scoreText(r.health)}`);
   if (r.health.breakdown) {
     const b = r.health.breakdown;
     L.push(
@@ -234,7 +250,8 @@ function compactRow(r: PackageReport, widths: CompactWidths | null = null): stri
       ? r.health.unparsed
         ? paint(c.yellow, "n/a (parse failed)")
         : paint(c.white, "n/a")
-      : paint(healthColor(r.health.score), `${r.health.score}/100`);
+      : paint(healthColor(r.health.score), `${r.health.score}/100`) +
+        (r.health.source === "estimate" ? paint(c.white, " est") : "");
   // Padding goes inside the dim version segment (plain spaces, no new
   // glyphs), so short names don't shift the deps/health columns.
   const name = sanitizeTerminal(r.meta.name);

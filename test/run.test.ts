@@ -305,6 +305,33 @@ describe("run", () => {
     expect(output()).toContain("unknown, not healthy");
     expect(process.exitCode).toBe(0);
   });
+  test("unparsable snyk health falls back to the nps estimate", async () => {
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes("security.snyk.io")) {
+        return { status: 200, ok: true, text: async () => "<html>redesigned</html>" };
+      }
+      if (u.includes("api.osv.dev")) {
+        const critical = { vulns: [{ id: "GHSA-1", database_specific: { severity: "CRITICAL" } }] };
+        return { status: 200, ok: true, text: async () => JSON.stringify(critical) };
+      }
+      if (u.includes("api.npmjs.org")) {
+        return { status: 200, ok: true, json: async () => ({ downloads: 20 }) };
+      }
+      if (u.includes("api.deps.dev")) return { status: 404, ok: false };
+      return {
+        status: 200,
+        ok: true,
+        json: async () => ({ name: "pkgr1", version: "1.0.0", dependencies: {} }),
+      };
+    }) as unknown as typeof fetch;
+    await run(["add", "pkgr1", "--dry-run", "--pm", "bun", "--min-score", "90"]);
+    expect(output()).toContain("showing nps estimate");
+    expect(output()).toContain("(nps estimate: snyk parse failed)");
+    expect(output()).toMatch(/low health score: pkgr1 \(\d+\/100 est\)/);
+    expect(output()).toMatch(/health \d+\/100 \(nps estimate\) is below min-score 90/);
+    expect(process.exitCode).toBe(3);
+  });
   test("mix of registry and non-registry specs", async () => {
     stubRegistry(["pkgr1"]);
     await run(["add", "pkgr1", "user/repo", "--dry-run", "--pm", "bun", "-y"]);

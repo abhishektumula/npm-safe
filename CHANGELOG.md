@@ -11,8 +11,15 @@ versions follow semver (minor bumps may change CLI output while < 1.0).
   the inspected version; `--json` gains `project` (incl. `repoVerified`,
   which catches packages borrowing a popular repo's stars). `nps doctor`
   checks api.deps.dev. Public npm only; fail-open like every source.
+- nps health estimate: when Snyk is unreachable, unparsable or disabled,
+  the score comes from OSV advisories, weekly downloads, OpenSSF Scorecard
+  and publish recency instead of `n/a`, labelled `(nps estimate: …)` on
+  cards, `est` in compact rows and `health.source: "estimate"` in `--json`.
+  `--min-score` gates on it, so a Snyk outage no longer blocks every
+  install. Critical/high advisories and deprecation cap the estimate.
 
 ### Fixed
+- Health badges: "Inactive" was painted green (it contains "active").
 - `nps check chalk@4` (any version, range or dist-tag) now inspects the
   version that will be installed (`4.1.2`), not `latest`: the card, OSV
   advisories, signals and dep crawl all follow the requested spec. Ranges

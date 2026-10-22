@@ -31,7 +31,7 @@ stops (policy still applies and sets the exit code).
 | `query` | what the user typed (`express@5`) |
 | `meta` | registry data (`name`, `version`, `license`, `deprecated`, `installScripts`, …) or `null` when the lookup failed |
 | `metaError` | why `meta` is `null` |
-| `health` | `{ score: 0–100 \| null, breakdown, unparsed?, stale? }` |
+| `health` | `{ score: 0–100 \| null, breakdown, source?, unparsed?, skipped?, stale? }`; `source: "estimate"` = nps's own score (Snyk had none: `unparsed`/`skipped` say why), absent or `"snyk"` = Snyk |
 | `vulns` | `{ count, ids[≤10], worst, stale? }`; `null` = OSV unreachable; absent = not queried |
 | `signals` | `{ deprecated, installScripts[], lookalike, lowDownloads? }` |
 | `downloads` | weekly npm downloads; `null` = unknown or private registry; absent = not queried |

@@ -138,9 +138,11 @@ describe("inspect integration", () => {
     const seen: string[] = [];
     stubAll(5000, seen);
     const r = await inspectOne("dlpkg", { cwd: dir, noSnyk: true });
-    expect(r.health).toEqual({ score: null, breakdown: null, skipped: true });
+    // OSV + downloads answered, so nps estimates instead of showing n/a.
+    expect(r.health).toMatchObject({ source: "estimate", skipped: true });
+    expect(r.health.score).toBeGreaterThan(0);
     expect(seen.some((u) => u.includes("snyk"))).toBe(false);
-    expect(stripAnsi(render([r], false))).toContain("n/a (snyk disabled)");
+    expect(stripAnsi(render([r], false))).toContain("(nps estimate: snyk disabled)");
   });
   test("advisoryText stays null when OSV was never queried", () => {
     expect(advisoryText({ vulns: undefined } as never)).toBeNull();

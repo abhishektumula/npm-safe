@@ -42,6 +42,7 @@ what rules are load-bearing, and exactly when to commit.
 | `src/fetch.ts`     | Shared `fetchWithRetry()` (per-attempt timeout, one retry on 429/502/503/504 and network errors) | Intel transport, retry policy |
 | `src/cache.ts`     | Persistent intel cache (memory + disk, 24h TTL, 7-day stale window for offline fallback, stats/purge) | Cache TTL, location, disable rules |
 | `src/snyk.ts`      | Snyk health scrape (flags unparsable pages)         | Health source/parsing changes                      |
+| `src/score.ts`     | `estimateHealth()`: pure fallback score from OSV/downloads/deps.dev when Snyk has none (`source: "estimate"`) | Weights, caps, labels |
 | `src/osv.ts`       | OSV.dev advisories for name@version (POST, structured JSON) | Advisory source changes                    |
 | `src/depsdev.ts`   | deps.dev for name@version: publish time, provenance, OpenSSF Scorecard, stars (public npm only) | Trust facts, repo verification |
 | `src/signals.ts`   | Local red flags: deprecated, install scripts, typosquat lookalikes; `closest()` for did-you-mean | Signal rules, popular-name list |
@@ -116,7 +117,9 @@ in parallel, then `countTransitive` + `fetchVulns` + `fetchWeeklyDownloads` +
   `SCHEMA_VERSION` and `docs/json-schema.md`.
 - Policy violations exit 3 and `-y` never bypasses them. Intel failures stay
   fail-open unless a policy requires the data (`--min-score` treats unknown
-  health as a violation).
+  health as a violation). Snyk stays the primary health source; when it has
+  no score, inspectOne substitutes `estimateHealth()` and the card/policy
+  messages must label it as an estimate.
 - Passthrough forwards `--verbose`, `--no-cache`, `--no-color`, `--min-score`
   to the manager verbatim; nps also consumes them.
 - Any module-level `paint()` call is a bug (color is decided at call time).

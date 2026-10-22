@@ -8,6 +8,7 @@ import { fetchWeeklyDownloads } from "./downloads.ts";
 import { fetchVulns } from "./osv.ts";
 import { fetchProject } from "./depsdev.ts";
 import { signalsOf } from "./signals.ts";
+import { estimateHealth } from "./score.ts";
 import { DEFAULT_REGISTRY, loadNpmrc, registryFor } from "./npmrc.ts";
 import { vlog } from "./log.ts";
 import { persistIntelCacheSync } from "./cache.ts";
@@ -101,11 +102,23 @@ export async function inspectOne(query: string, opts?: InspectOptions): Promise<
     publicRegistry ? fetchProject(meta.name, vulnVersion) : Promise.resolve(null),
   ]);
   const { count, names, truncated } = crawl;
+  // No Snyk score (unreachable, unparsable, disabled): estimate from the free
+  // structured sources. The Snyk flags stay so the card can say why.
+  let shown: Health = healthVal;
+  if (healthVal.score === null) {
+    const est = estimateHealth({ vulns, downloads, project, deprecated: meta.deprecated });
+    if (est) {
+      shown = { ...est };
+      if (healthVal.unparsed) shown.unparsed = true;
+      if (healthVal.skipped) shown.skipped = true;
+      vlog(`${query}: snyk had no score — nps estimate ${est.score}/100`);
+    }
+  }
   vlog(`${query}: inspected in ${Date.now() - t0}ms`);
   return finish(query, t0, {
     meta,
     metaError: null,
-    health: healthVal,
+    health: shown,
     directCount: meta.directDeps.length,
     transitiveCount: count,
     totalCount: meta.directDeps.length + count,
