@@ -58,13 +58,32 @@ describe("fetchWithRetry", () => {
     expect((await fetchWithRetry("https://x.example")).status).toBe(500);
     expect(calls500()).toBe(1);
   });
-  test("network failure throws without spinning", async () => {
+  test("retries gateway errors", async () => {
+    for (const status of [502, 504]) {
+      const calls = stubSequence([{ status }, { status: 200, body: "ok" }]);
+      const res = await fetchWithRetry("https://x.example", {}, { defaultBackoffMs: 1 });
+      expect(res.status).toBe(200);
+      expect(calls()).toBe(2);
+    }
+  });
+  test("network failure retries once, then throws", async () => {
     let calls = 0;
     globalThis.fetch = (async () => {
       calls++;
       throw new Error("net down");
     }) as unknown as typeof fetch;
-    await expect(fetchWithRetry("https://x.example")).rejects.toThrow("net down");
-    expect(calls).toBe(1);
+    await expect(fetchWithRetry("https://x.example", {}, { defaultBackoffMs: 1 })).rejects.toThrow(
+      "net down",
+    );
+    expect(calls).toBe(2);
+  });
+  test("a dropped connection recovers on the second attempt", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      if (calls++ === 0) throw new Error("socket hang up");
+      return { status: 200, ok: true };
+    }) as unknown as typeof fetch;
+    const res = await fetchWithRetry("https://x.example", {}, { defaultBackoffMs: 1 });
+    expect(res.status).toBe(200);
   });
 });

@@ -11,6 +11,9 @@ versions follow semver (minor bumps may change CLI output while < 1.0).
   advisories, signals and dep crawl all follow the requested spec. Ranges
   resolve against the abbreviated packument with `semver` (new direct
   dependency, already in the tree via Arborist).
+- Intel fetches retry once on a dropped connection, timeout, or 502/504
+  gateway error (previously only 429/503), so one slow CDN edge no longer
+  blanks a card or the health score.
 
 ## [2.1.0] - 2026-10-20
 

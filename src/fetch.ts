@@ -2,8 +2,10 @@
 //
 // The BFS in deps.ts fans out at CONCURRENCY 20; a burst that trips a
 // 429/503 should back off and retry instead of failing the whole screen.
-// Only 429/503 are retried — 404/500 mean what they say and flow to the
-// callers' existing error paths. Each attempt gets its own timeout signal
+// Transient failures are retried: 429, gateway errors (502/503/504), and
+// network errors/timeouts (a dropped socket or one slow CDN edge should not
+// blank a card). 404/500 mean what they say and flow to the callers'
+// existing error paths. Each attempt gets its own timeout signal
 // so a slow first attempt can't eat the next attempt's budget. Honors
 // Retry-After (capped); uses globalThis.fetch so tests keep stubbing one
 // seam. Pure orchestration — no runtime APIs beyond fetch/timers.
@@ -18,6 +20,9 @@ export interface FetchRetryOptions {
   /** fallback delay when the server sends no usable Retry-After (default 500) */
   defaultBackoffMs?: number;
 }
+
+/** Statuses worth a second attempt: rate limits and gateway hiccups. */
+const RETRY_STATUS = new Set([429, 502, 503, 504]);
 
 function backoffMs(res: Response, opts: Required<FetchRetryOptions>): number {
   const raw = res.headers?.get?.("retry-after") ?? null;
@@ -53,9 +58,11 @@ export async function fetchWithRetry(
       });
     } catch (err) {
       lastError = err;
-      break; // network/timeout: callers already degrade gracefully; don't spin
+      // Bounded by maxAttempts; callers still degrade gracefully after that.
+      if (attempt < opts.maxAttempts) await sleep(opts.defaultBackoffMs);
+      continue;
     }
-    if ((res.status === 429 || res.status === 503) && attempt < opts.maxAttempts) {
+    if (RETRY_STATUS.has(res.status) && attempt < opts.maxAttempts) {
       // Drain so the socket can be reused; tolerate stub-shaped responses.
       try {
         await res.arrayBuffer?.();
