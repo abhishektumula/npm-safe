@@ -6,6 +6,7 @@ import { fetchHealth } from "./snyk.ts";
 import { countTransitive } from "./deps.ts";
 import { fetchWeeklyDownloads } from "./downloads.ts";
 import { fetchVulns } from "./osv.ts";
+import { fetchProject } from "./depsdev.ts";
 import { signalsOf } from "./signals.ts";
 import { DEFAULT_REGISTRY, loadNpmrc, registryFor } from "./npmrc.ts";
 import { vlog } from "./log.ts";
@@ -89,14 +90,15 @@ export async function inspectOne(query: string, opts?: InspectOptions): Promise<
   const healthVal = health.status === "fulfilled" ? health.value : { score: null, breakdown: null };
   // Advisories need the exact version; start them alongside the crawl.
   const vulnVersion = opts?.versionFor?.(lookup) ?? meta.version;
-  // The download endpoint only exists on the public registry.
+  // Downloads and deps.dev only know the public registry.
   const publicRegistry = !opts?.registry && !hasCustomRegistry(lookup, opts?.cwd);
-  const [crawl, vulns, downloads] = await Promise.all([
+  const [crawl, vulns, downloads, project] = await Promise.all([
     opts?.skipDeps
       ? Promise.resolve({ count: 0, names: [] as string[], truncated: false })
       : countTransitive(meta.directDeps, opts),
     fetchVulns(meta.name, vulnVersion),
     publicRegistry ? fetchWeeklyDownloads(meta.name) : Promise.resolve(null),
+    publicRegistry ? fetchProject(meta.name, vulnVersion) : Promise.resolve(null),
   ]);
   const { count, names, truncated } = crawl;
   vlog(`${query}: inspected in ${Date.now() - t0}ms`);
@@ -111,8 +113,9 @@ export async function inspectOne(query: string, opts?: InspectOptions): Promise<
     truncated,
     vulns,
     downloads,
+    project,
     signals: signalsOf(meta, downloads),
-    stale: Boolean(meta.stale || healthVal.stale || vulns?.stale),
+    stale: Boolean(meta.stale || healthVal.stale || vulns?.stale || project?.stale),
   });
 }
 

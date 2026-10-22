@@ -33,7 +33,9 @@ stops (policy still applies and sets the exit code).
 | `metaError` | why `meta` is `null` |
 | `health` | `{ score: 0–100 \| null, breakdown, unparsed?, stale? }` |
 | `vulns` | `{ count, ids[≤10], worst, stale? }`; `null` = OSV unreachable; absent = not queried |
-| `signals` | `{ deprecated, installScripts[], lookalike }` |
+| `signals` | `{ deprecated, installScripts[], lookalike, lowDownloads? }` |
+| `downloads` | weekly npm downloads; `null` = unknown or private registry; absent = not queried |
+| `project` | deps.dev `{ publishedAt, provenance, repo, repoVerified, scorecard (0–10), maintained (0–10), stars, stale? }`; `null` = unknown/unreachable or private registry; absent = not queried. `stars` belong to the *claimed* repo unless `repoVerified` (provenance built from it) |
 | `directCount` / `transitiveCount` / `totalCount` | dependency counts (`scan` skips the crawl: transitive is 0) |
 | `truncated` | the transitive crawl hit its budget |
 | `stale` | any source answered from an expired cache (offline) |

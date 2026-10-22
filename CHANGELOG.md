@@ -5,6 +5,13 @@ versions follow semver (minor bumps may change CLI output while < 1.0).
 
 ## [Unreleased]
 
+### Added
+- deps.dev intel (free, no key): cards gain a `trust` line with the OpenSSF
+  Scorecard, GitHub stars, verified build provenance and publish age for
+  the inspected version; `--json` gains `project` (incl. `repoVerified`,
+  which catches packages borrowing a popular repo's stars). `nps doctor`
+  checks api.deps.dev. Public npm only; fail-open like every source.
+
 ### Fixed
 - `nps check chalk@4` (any version, range or dist-tag) now inspects the
   version that will be installed (`4.1.2`), not `latest`: the card, OSV

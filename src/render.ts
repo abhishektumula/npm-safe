@@ -27,6 +27,34 @@ export function advisoryText(r: PackageReport): string | null {
   return paint(color, `${r.vulns.count} known${sev}`) + paint(c.white, `  ${ids}${more}`);
 }
 
+/** "3d ago" / "5mo ago" / "2y ago" for an ISO time; null when unparsable. Pure. */
+export function ageText(iso: string | null, now = Date.now()): string | null {
+  const t = iso ? Date.parse(iso) : NaN;
+  if (!Number.isFinite(t)) return null;
+  const h = Math.max(0, (now - t) / 3_600_000);
+  if (h < 48) return `${Math.floor(h)}h ago`;
+  const d = h / 24;
+  if (d < 60) return `${Math.floor(d)}d ago`;
+  if (d < 730) return `${Math.floor(d / 30)}mo ago`;
+  return `${Math.floor(d / 365)}y ago`;
+}
+
+/** deps.dev line: Scorecard, stars, provenance, publish age; null when nothing known. */
+export function projectText(r: PackageReport, now = Date.now()): string | null {
+  const p = r.project;
+  if (!p) return null;
+  const bits: string[] = [];
+  if (p.scorecard !== null) {
+    const color = p.scorecard >= 7 ? c.green : p.scorecard >= 4 ? c.yellow : c.orange;
+    bits.push(paint(c.white, "scorecard ") + paint(color, `${p.scorecard.toFixed(1)}/10`));
+  }
+  if (p.stars !== null) bits.push(paint(c.white, `★ ${formatCount(p.stars)}`));
+  if (p.provenance) bits.push(paint(c.green, "provenance ✓"));
+  const age = ageText(p.publishedAt, now);
+  if (age) bits.push(paint(c.white, `published ${age}`));
+  return bits.length ? bits.join("  ") : null;
+}
+
 /** Human warnings for deprecated / install-script / lookalike signals. */
 export function signalWarnings(r: PackageReport): string[] {
   const s = r.signals;
@@ -152,6 +180,8 @@ function fullCard(r: PackageReport, showAll: boolean): string {
       `  ${paint(c.violet, "usage  ")} ${paint(c.white, `${formatCount(r.downloads)} downloads/week`)}`,
     );
   }
+  const proj = projectText(r);
+  if (proj) L.push(`  ${paint(c.violet, "trust  ")} ${proj}`);
   const adv = advisoryText(r);
   if (adv) L.push(`  ${paint(c.violet, "vulns  ")} ${adv}`);
   for (const w of signalWarnings(r)) L.push(`  ${paint(c.orange, "⚠")} ${paint(c.orange, w)}`);

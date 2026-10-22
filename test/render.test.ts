@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { COMPACT_THRESHOLD, render } from "../src/render.ts";
+import { ageText, COMPACT_THRESHOLD, projectText, render } from "../src/render.ts";
 import { c } from "../src/colors.ts";
 import type { PackageReport } from "../src/types.ts";
 import { stripAnsi } from "./helper.ts";
@@ -194,5 +194,53 @@ describe("render compact rows", () => {
       render([r], false),
     ];
     for (const out of outputs) expect(out).not.toContain(c.dim);
+  });
+});
+
+describe("deps.dev trust line", () => {
+  const now = Date.parse("2026-10-22T00:00:00Z");
+  const project = {
+    publishedAt: "2026-10-21T00:00:00Z",
+    provenance: true,
+    repo: "github.com/x/y",
+    repoVerified: true,
+    scorecard: 7.2,
+    maintained: 9,
+    stars: 1500,
+  };
+  test("ageText buckets hours, days, months, years", () => {
+    expect(ageText("2026-10-21T12:00:00Z", now)).toBe("12h ago");
+    expect(ageText("2026-10-01T00:00:00Z", now)).toBe("21d ago");
+    expect(ageText("2026-01-01T00:00:00Z", now)).toBe("9mo ago");
+    expect(ageText("2021-07-30T00:00:00Z", now)).toBe("5y ago");
+    expect(ageText(null, now)).toBeNull();
+    expect(ageText("garbage", now)).toBeNull();
+  });
+  test("projectText shows scorecard, stars, provenance, age", () => {
+    const text = stripAnsi(projectText(report({ project }), now)!);
+    expect(text).toBe("scorecard 7.2/10  ★ 1.5K  provenance ✓  published 24h ago");
+    const low = stripAnsi(
+      projectText(report({ project: { ...project, scorecard: 2, provenance: false } }), now)!,
+    );
+    expect(low).toContain("scorecard 2.0/10");
+    expect(low).not.toContain("provenance");
+  });
+  test("nothing known renders no line", () => {
+    expect(projectText(report())).toBeNull();
+    const empty = {
+      ...project,
+      publishedAt: null,
+      provenance: false,
+      scorecard: null,
+      stars: null,
+    };
+    expect(projectText(report({ project: empty }))).toBeNull();
+    expect(stripAnsi(render([report({ project: empty })], false))).not.toContain("trust");
+  });
+  test("full card carries the trust line", () => {
+    const mid = { ...project, scorecard: 5 };
+    expect(stripAnsi(render([report({ project: mid })], false))).toContain(
+      "trust   scorecard 5.0/10",
+    );
   });
 });

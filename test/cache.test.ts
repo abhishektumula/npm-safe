@@ -160,7 +160,7 @@ describe("parallel intel", () => {
           text: async () => `<span class="score-number">80/100</span>`,
         };
       }
-      if (u.includes("api.osv.dev") || u.includes("api.npmjs.org")) {
+      if (u.includes("api.osv.dev") || u.includes("api.npmjs.org") || u.includes("api.deps.dev")) {
         return { status: 200, ok: true, text: async () => "{}" };
       }
       calls++;

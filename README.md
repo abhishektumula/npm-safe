@@ -9,6 +9,8 @@ is written**:
 - Snyk health score `/100` with `security` / `popularity` /
   `maintenance` / `community` breakdown
 - known advisories for that exact version (OSV.dev)
+- trust facts from deps.dev: OpenSSF Scorecard, GitHub stars, verified
+  build provenance, and how long ago the version was published
 - red flags: deprecated, runs code on install, name close to a popular
   package (typosquat)
 
@@ -119,7 +121,7 @@ the npm/yarn engines, use `-w`.
 | `nps install <pkg…>` (`i`, `add`, bare names) | intel → `[y/N]` → install |
 | `nps check <pkg…>` | intel only; same as `--dry-run`. Exits 3 if policy fails |
 | `nps scan [--prod]` | intel for every dependency in `package.json` (version on disk when installed), worst first |
-| `nps doctor` | manager detection, config, cache, registry / Snyk / OSV reachability |
+| `nps doctor` | manager detection, config, cache, registry / Snyk / OSV / deps.dev reachability |
 | `nps cache-clear` | delete nps's intel cache (named so it can't shadow `npm cache clean`) |
 | `nps completions <bash\|zsh\|fish>` | print a completion script |
 | `nps alias` | print shell aliases |
@@ -213,8 +215,9 @@ expired entry (up to 7 days old) is used and labelled
 ## Privacy
 
 Inspecting a package sends its name (and, for advisories, its version) to
-the registry (metadata), `security.snyk.io` (health) and `api.osv.dev`
-(advisories). Nothing else leaves your machine — no
+the registry (metadata), `security.snyk.io` (health), `api.osv.dev`
+(advisories), `api.npmjs.org` (download counts) and `api.deps.dev`
+(Scorecard, provenance, publish date; public npm packages only). Nothing else leaves your machine — no
 telemetry, no accounts. Tokens go only to the registry host and are
 never printed.
 

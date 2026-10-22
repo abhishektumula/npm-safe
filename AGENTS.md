@@ -43,6 +43,7 @@ what rules are load-bearing, and exactly when to commit.
 | `src/cache.ts`     | Persistent intel cache (memory + disk, 24h TTL, 7-day stale window for offline fallback, stats/purge) | Cache TTL, location, disable rules |
 | `src/snyk.ts`      | Snyk health scrape (flags unparsable pages)         | Health source/parsing changes                      |
 | `src/osv.ts`       | OSV.dev advisories for name@version (POST, structured JSON) | Advisory source changes                    |
+| `src/depsdev.ts`   | deps.dev for name@version: publish time, provenance, OpenSSF Scorecard, stars (public npm only) | Trust facts, repo verification |
 | `src/signals.ts`   | Local red flags: deprecated, install scripts, typosquat lookalikes; `closest()` for did-you-mean | Signal rules, popular-name list |
 | `src/policy.ts`    | `--min-score` + `nps.config.json` `policy` → `evaluate()` violations (exit 3) | Block rules |
 | `src/commands.ts`  | nps-native commands: `scan`, `doctor`, `cache-clear`, `completions`, `alias` | New non-install commands |
@@ -63,7 +64,8 @@ what rules are load-bearing, and exactly when to commit.
 
 Data flow: `run()` → `parseArgs()` → (tool commands → `runTool()`) →
 `detectPm()` → per-package `inspectOne()` (`fetchNpmMeta` + `fetchHealth`
-in parallel, then `countTransitive` + `fetchVulns`) → `render()` (or the
+in parallel, then `countTransitive` + `fetchVulns` + `fetchWeeklyDownloads` +
+`fetchProject`) → `render()` (or the
 `--json` document) → `evaluate()` policy gate (exit 3) → confirm →
 `performInstall()`.
 
@@ -130,7 +132,8 @@ Show per package: name + version, description, author, repo URL,
 direct / transitive / total dep counts, health score `/100` with bar plus
 `security` / `popularity` / `maintenance` / `community` breakdown.
 Intel: `registry.npmjs.org` for metadata, `security.snyk.io` (scraped) for health,
-`api.osv.dev` for advisories, plus local signals from registry metadata.
+`api.osv.dev` for advisories, `api.deps.dev` for Scorecard/provenance/publish
+date, plus local signals from registry metadata.
 Flow: `nps install <pkgs>` → intel cards → `[y/N]` → install with the
 detected manager. Bare `nps install` installs project deps (no intel).
 Non-registry specs skip intel with a warning. Multiple packages in one
@@ -161,7 +164,7 @@ Keep latency minimal (parallel fetches, bounded BFS), output colorful
 - Never hit the network in tests: stub `globalThis.fetch`, use temp dirs.
 - Be hermetic: point `HOME` / `NPS_CACHE_DIR` at temp dirs and call
   `clearNpmrcCache()` when a test reads `.npmrc` or the cache. The api.osv.dev
-  URL is also fetched — stubs must answer it.
+  and api.deps.dev URLs are also fetched — stubs must answer them.
 
 ## 7. Docs
 

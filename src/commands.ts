@@ -18,6 +18,7 @@ import { advisoryText, signalWarnings } from "./render.ts";
 import { sanitizeTerminal } from "./sanitize.ts";
 import { startSpinner } from "./spinner.ts";
 import { healthColor } from "./colors.ts";
+import { DEPSDEV_API } from "./depsdev.ts";
 import { OSV_URL } from "./osv.ts";
 import { VERSION } from "./version.ts";
 import type { CliOptions, PackageReport } from "./types.ts";
@@ -313,7 +314,7 @@ export async function runChecks(opts: CliOptions, cwd: string): Promise<Check[]>
   });
 
   const registry = registryFor("nps-doctor", loadNpmrc(cwd), opts.registry);
-  const [reg, snyk, osv] = await Promise.all([
+  const [reg, snyk, osv, depsdev] = await Promise.all([
     probe(`${registry}/-/ping`),
     probe("https://security.snyk.io/package/npm/left-pad"),
     probe(OSV_URL, {
@@ -321,6 +322,7 @@ export async function runChecks(opts: CliOptions, cwd: string): Promise<Check[]>
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ package: { name: "left-pad", ecosystem: "npm" }, version: "1.3.0" }),
     }),
+    probe(`${DEPSDEV_API}/systems/npm/packages/left-pad/versions/1.3.0`),
   ]);
   checks.push({
     label: "registry",
@@ -336,6 +338,11 @@ export async function runChecks(opts: CliOptions, cwd: string): Promise<Check[]>
     label: "osv advisories",
     status: osv ? "warn" : "ok",
     detail: osv ?? "api.osv.dev reachable",
+  });
+  checks.push({
+    label: "deps.dev",
+    status: depsdev ? "warn" : "ok",
+    detail: depsdev ?? "api.deps.dev reachable (scorecard, provenance, publish date)",
   });
   return checks;
 }

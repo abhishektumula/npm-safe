@@ -44,6 +44,25 @@ export interface Vulns {
   stale?: boolean;
 }
 
+/** deps.dev facts for the inspected version and its source repo. */
+export interface Project {
+  /** ISO publish time of this version; null when unknown */
+  publishedAt: string | null;
+  /** a verified SLSA provenance / npm attestation exists for this version */
+  provenance: boolean;
+  /** source repo as "github.com/org/repo"; null when unknown or not GitHub */
+  repo: string | null;
+  /** true when the provenance build repo matches `repo` (the claim is proven) */
+  repoVerified: boolean;
+  /** OpenSSF Scorecard overall score, 0-10 */
+  scorecard: number | null;
+  /** Scorecard "Maintained" check, 0-10 (recent commits/issue activity) */
+  maintained: number | null;
+  /** GitHub stars of `repo` (claimed unless repoVerified) */
+  stars: number | null;
+  stale?: boolean;
+}
+
 /** Cheap local red flags derived from registry metadata. */
 export interface Signals {
   deprecated: string | null;
@@ -73,6 +92,8 @@ export interface PackageReport {
   signals?: Signals | null;
   /** weekly npm downloads; null = unknown/not applicable, absent = not queried */
   downloads?: number | null;
+  /** deps.dev: publish time, provenance, Scorecard, stars; null = unknown, absent = not queried */
+  project?: Project | null;
   /** any source answered from an expired cache (offline fallback) */
   stale?: boolean;
 }

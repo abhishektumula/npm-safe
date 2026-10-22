@@ -248,6 +248,7 @@ describe("nps doctor", () => {
       "registry",
       "snyk health",
       "osv advisories",
+      "deps.dev",
     ]);
     expect(checks.every((c) => c.status !== "fail")).toBe(true);
     const code = await runTool("doctor", [], opts(), dir);
@@ -264,6 +265,7 @@ describe("nps doctor", () => {
     expect(by["registry"]!.status).toBe("fail");
     expect(by["snyk health"]!.status).toBe("warn");
     expect(by["osv advisories"]!.status).toBe("warn");
+    expect(by["deps.dev"]!.status).toBe("warn");
     expect(await runTool("doctor", [], opts(), dir)).toBe(1);
   });
   test("bad --pm shows as a failed check and config is reported", async () => {
