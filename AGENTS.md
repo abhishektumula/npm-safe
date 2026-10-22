@@ -37,7 +37,7 @@ what rules are load-bearing, and exactly when to commit.
 | `src/install.ts`   | **Only file allowed to install/run packages.** Per-PM engines behind `performInstall` / `performPassthrough` | Any install or spawn behavior |
 | `src/pm.ts`        | Detecting which manager owns `cwd` (lockfiles → `packageManager` field → npm default) | Detection rules only |
 | `src/pmconfig.ts`  | `nps.config.json` enable/disable (`packageManagers.<name>.enabled`, fail-open, cached per cwd) | Config shape, defaults, disable rules |
-| `src/npm.ts`       | Registry metadata (`/:pkg/latest`, private registries via `npmrc.ts`) | Intel fields, registry handling |
+| `src/npm.ts`       | Registry metadata for the requested spec (`/:pkg/latest`, `/:pkg/:version-or-tag`, ranges via abbreviated packument + `semver`; private registries via `npmrc.ts`) | Intel fields, registry handling |
 | `src/npmrc.ts`     | `.npmrc` discovery + `--registry`/`NPM_TOKEN` resolution for intel + Arborist | Private-registry auth |
 | `src/fetch.ts`     | Shared `fetchWithRetry()` (per-attempt timeout, 429/503 backoff) | Intel transport, retry policy |
 | `src/cache.ts`     | Persistent intel cache (memory + disk, 24h TTL, 7-day stale window for offline fallback, stats/purge) | Cache TTL, location, disable rules |

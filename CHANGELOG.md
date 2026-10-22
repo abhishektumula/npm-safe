@@ -5,6 +5,13 @@ versions follow semver (minor bumps may change CLI output while < 1.0).
 
 ## [Unreleased]
 
+### Fixed
+- `nps check chalk@4` (any version, range or dist-tag) now inspects the
+  version that will be installed (`4.1.2`), not `latest`: the card, OSV
+  advisories, signals and dep crawl all follow the requested spec. Ranges
+  resolve against the abbreviated packument with `semver` (new direct
+  dependency, already in the tree via Arborist).
+
 ## [2.1.0] - 2026-10-20
 
 Supply-chain hardening after Socket.dev flagged the published package.

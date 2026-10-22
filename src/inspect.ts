@@ -65,10 +65,10 @@ export async function inspectOne(query: string, opts?: InspectOptions): Promise<
     };
   }
 
-  const { name } = splitSpec(query);
+  const { name, version } = splitSpec(query);
   const lookup = name || query;
   const [metaRes, health] = await Promise.allSettled([
-    fetchNpmMeta(lookup, opts),
+    fetchNpmMeta(lookup, opts, version),
     opts?.noSnyk
       ? Promise.resolve<Health>({ score: null, breakdown: null, skipped: true })
       : fetchHealth(lookup),

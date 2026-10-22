@@ -65,6 +65,30 @@ describe("inspectOne", () => {
     expect(r.query).toBe("pkgb@2.0.0");
     expect(r.meta?.name).toBe("pkgb");
   });
+  test("versioned query inspects that version, not latest", async () => {
+    const seen: string[] = [];
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      const u = String(url);
+      seen.push(u);
+      if (u.includes("security.snyk.io")) {
+        return { status: 200, ok: true, text: async () => HEALTH_HTML };
+      }
+      if (u.includes("api.osv.dev")) {
+        const body = JSON.parse(String(init?.body));
+        seen.push(`osv:${body.version}`);
+        return { status: 200, ok: true, text: async () => "{}" };
+      }
+      return {
+        status: 200,
+        ok: true,
+        json: async () => ({ name: "pkgv", version: u.split("/").at(-1), dependencies: {} }),
+      };
+    }) as unknown as typeof fetch;
+    const r = await inspectOne("pkgv@2.0.0");
+    expect(r.meta?.version).toBe("2.0.0");
+    expect(seen).toContain("https://registry.npmjs.org/pkgv/2.0.0");
+    expect(seen).toContain("osv:2.0.0");
+  });
   test("missing package keeps query and error", async () => {
     stubIntel({}, ["ghost"]);
     const r = await inspectOne("ghost");
