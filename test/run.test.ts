@@ -480,9 +480,12 @@ describe("run: policy, json, flags", () => {
     setVerbose(false);
   });
   test("--verbose lists flags the engine ignores", async () => {
-    stubRegistry(["pkgr1"]);
+    // The note is logged before intel; a failed lookup stops the run before
+    // the npm engine's dry-run, which would resolve against the real registry.
+    stubRegistry([]);
     await run(["check", "pkgr1", "--verbose", "--prefer-offline", "--pm", "npm"]);
     expect(stripAnsi(errors.join("\n"))).toContain("ignored by the npm engine: --prefer-offline");
+    expect(process.exitCode).toBe(4);
     setVerbose(false);
   });
   test("--no-cache sets NPS_NO_CACHE for the run", async () => {
