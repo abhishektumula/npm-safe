@@ -1,6 +1,6 @@
 {
   "name": "@hort/nps",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "nps: see package intel (deps, health) before you install — an npm wrapper",
   "type": "module",
   "bin": {

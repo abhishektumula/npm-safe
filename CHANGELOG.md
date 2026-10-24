@@ -5,6 +5,12 @@ versions follow semver (minor bumps may change CLI output while < 1.0).
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-24
+
+Adds free supply-chain signals (deps.dev, health estimate, fresh releases).
+`--min-score` now gates on the nps estimate when Snyk has no score, so a Snyk
+outage or layout change no longer blocks every install.
+
 ### Added
 - deps.dev intel (free, no key): cards gain a `trust` line with the OpenSSF
   Scorecard, GitHub stars, verified build provenance and publish age for
