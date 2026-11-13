@@ -156,13 +156,94 @@ describe("authHeaders", () => {
       cleanup(dir);
     }
   });
-  test("NPM_TOKEN is the fallback", () => {
+  test("NPM_TOKEN is the fallback for the default registry", () => {
     process.env.NPM_TOKEN = "envtok";
     const dir = proj({});
     try {
-      expect(authHeaders("https://r.example.com", loadNpmrc(dir))).toEqual({
+      expect(authHeaders(DEFAULT_REGISTRY, loadNpmrc(dir))).toEqual({
         Authorization: "Bearer envtok",
       });
+    } finally {
+      cleanup(dir);
+    }
+  });
+  test("NPM_TOKEN goes to the --registry override host", () => {
+    process.env.NPM_TOKEN = "envtok";
+    const dir = proj({});
+    try {
+      const cfg = loadNpmrc(dir);
+      expect(authHeaders("https://r.example.com", cfg, "https://r.example.com/")).toEqual({
+        Authorization: "Bearer envtok",
+      });
+    } finally {
+      cleanup(dir);
+    }
+  });
+  test("NPM_TOKEN goes to the NPM_CONFIG_REGISTRY host", () => {
+    process.env.NPM_TOKEN = "envtok";
+    process.env.NPM_CONFIG_REGISTRY = "https://env.example.com";
+    const dir = proj({});
+    try {
+      expect(authHeaders("https://env.example.com", loadNpmrc(dir))).toEqual({
+        Authorization: "Bearer envtok",
+      });
+    } finally {
+      cleanup(dir);
+    }
+  });
+  test("NPM_TOKEN goes to registries named in ~/.npmrc", () => {
+    process.env.NPM_TOKEN = "envtok";
+    const dir = proj(
+      {},
+      { ".npmrc": "registry=https://home.example.com\n@me:registry=https://me.example.com\n" },
+    );
+    try {
+      const cfg = loadNpmrc(dir);
+      expect(authHeaders("https://home.example.com", cfg)).toEqual({
+        Authorization: "Bearer envtok",
+      });
+      expect(authHeaders("https://me.example.com", cfg)).toEqual({
+        Authorization: "Bearer envtok",
+      });
+    } finally {
+      cleanup(dir);
+    }
+  });
+  test("NPM_TOKEN never goes to a host only a project .npmrc introduced", () => {
+    process.env.NPM_TOKEN = "envtok";
+    const dir = proj({
+      ".npmrc": "registry=https://evil.example.com\n@foo:registry=https://evil2.example.com\n",
+    });
+    try {
+      const cfg = loadNpmrc(dir);
+      expect(authHeaders("https://evil.example.com", cfg)).toEqual({});
+      expect(authHeaders("https://evil2.example.com", cfg)).toEqual({});
+      expect(authHeaders("https://unlisted.example.com", cfg)).toEqual({});
+    } finally {
+      cleanup(dir);
+    }
+  });
+  test("project .npmrc can still opt in explicitly via ${NPM_TOKEN}", () => {
+    process.env.NPM_TOKEN = "envtok";
+    const dir = proj({
+      ".npmrc": "@foo:registry=https://npm.foo.com\n//npm.foo.com/:_authToken=${NPM_TOKEN}\n",
+    });
+    try {
+      expect(authHeaders("https://npm.foo.com", loadNpmrc(dir))).toEqual({
+        Authorization: "Bearer envtok",
+      });
+    } finally {
+      cleanup(dir);
+    }
+  });
+  test("arborist opts never carry NPM_TOKEN to a project-only scoped registry", () => {
+    process.env.NPM_TOKEN = "envtok";
+    const dir = proj({ ".npmrc": "@foo:registry=https://evil.example.com\n" });
+    try {
+      const opts = arboristRegistryOpts(loadNpmrc(dir), null);
+      expect(opts["@foo:registry"]).toBe("https://evil.example.com");
+      expect(opts["//evil.example.com/:_authToken"]).toBeUndefined();
+      expect(opts["//registry.npmjs.org/:_authToken"]).toBe("envtok");
     } finally {
       cleanup(dir);
     }

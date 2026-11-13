@@ -125,7 +125,7 @@ export async function fetchNpmMeta(
       return { ...old, stale: true };
     };
     vlog(`cache miss: ${name}${ref ? `@${ref}` : ""} (meta) -> ${registry}`);
-    const headers = authHeaders(registry, cfg);
+    const headers = authHeaders(registry, cfg, opts?.registry);
     // Transport + status mapping shared by the packument and manifest reads.
     const get = async (url: string, accept: string, what: string): Promise<Response | null> => {
       const t0 = Date.now();
@@ -232,7 +232,7 @@ export async function fetchPublishedAt(
   try {
     const res = await fetchWithRetry(
       `${registry}/${encodePkg(name)}`,
-      { headers: { Accept: "application/json", ...authHeaders(registry, cfg) } },
+      { headers: { Accept: "application/json", ...authHeaders(registry, cfg, opts?.registry) } },
       { timeoutMs: 8000 },
     );
     if (!res.ok) return null;

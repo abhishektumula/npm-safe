@@ -221,6 +221,12 @@ Private registries: `--registry`, `.npmrc` (`registry`,
 `@scope:registry`, `//host/:_authToken` with `${VAR}`), or `NPM_TOKEN` —
 for intel and install alike.
 
+`NPM_TOKEN` is only sent to registries you chose: the npmjs default,
+`--registry`, `NPM_CONFIG_REGISTRY`, or hosts in `~/.npmrc`. A registry
+that only a project's `.npmrc` names must opt in explicitly with
+`//host/:_authToken=${NPM_TOKEN}`, so a cloned repo can't redirect your
+token to its own server.
+
 Intel is cached (memory + disk, 24h TTL) so repeat installs return in
 single-digit ms with zero network — first run warms the cache. Multiple
 packages fetch in parallel with shared dedup. If the network is down, an

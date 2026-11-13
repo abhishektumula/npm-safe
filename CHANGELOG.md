@@ -5,6 +5,14 @@ versions follow semver (minor bumps may change CLI output while < 1.0).
 
 ## [Unreleased]
 
+### Security
+- `NPM_TOKEN` is no longer sent to every registry without an `.npmrc`
+  token. It now goes only to registries the user chose (npmjs default,
+  `--registry`, `NPM_CONFIG_REGISTRY`, `~/.npmrc` hosts). Previously a
+  cloned repo's `.npmrc` could point a scope at its own server and receive
+  your token on `nps install`. Project registries that need it must say
+  `//host/:_authToken=${NPM_TOKEN}` (same as npm).
+
 ## [2.2.0] - 2026-10-24
 
 Adds free supply-chain signals (deps.dev, health estimate, fresh releases).
