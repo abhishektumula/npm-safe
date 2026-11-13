@@ -6,7 +6,12 @@
 //             > .npmrc `registry` (project cwd wins over home) > npmjs default.
 //             `@scope:registry` entries always win for their scope.
 //   token:    .npmrc `//host/:_authToken` (or `:_auth`) for the host >
-//             NPM_TOKEN env (sent as Bearer).
+//             NPM_TOKEN env (sent as Bearer) — but only to registries the
+//             user chose: the npmjs default, `--registry`,
+//             NPM_CONFIG_REGISTRY, or hosts named in ~/.npmrc. A registry
+//             introduced only by a project .npmrc (i.e. by whoever wrote
+//             the repo) never gets the ambient NPM_TOKEN; it must ask for
+//             it explicitly via `//host/:_authToken=${NPM_TOKEN}`.
 //
 // .npmrc values support npm-style ${VAR} interpolation, which is how CI
 // commonly injects tokens (`//host/:_authToken=${NPM_TOKEN}`).
@@ -26,6 +31,8 @@ export interface NpmrcConfig {
   tokens: Record<string, string>;
   /** nerfed host key ("//host/") -> basic-auth value */
   auths: Record<string, string>;
+  /** nerfed hosts eligible for the NPM_TOKEN fallback (default + ~/.npmrc) */
+  trusted: string[];
 }
 
 /** `https://host:port/path` -> `//host:port/` (the key form npm uses). */
@@ -63,16 +70,26 @@ function hostKey(key: string, suffix: ":_authToken" | ":_auth"): string | null {
   return host.endsWith("/") ? host : `${host}/`;
 }
 
-function foldEntries(cfg: NpmrcConfig, entries: Record<string, string>): void {
+/**
+ * Merge one .npmrc into `cfg`. `trust` marks the file as the user's own
+ * (~/.npmrc): its registry hosts become eligible for NPM_TOKEN.
+ */
+function foldEntries(cfg: NpmrcConfig, entries: Record<string, string>, trust: boolean): void {
+  const addTrusted = (url: string) => {
+    const host = nerf(url);
+    if (trust && !cfg.trusted.includes(host)) cfg.trusted.push(host);
+  };
   for (const [key, value] of Object.entries(entries)) {
     if (!value) continue;
     if (key === "registry") {
       cfg.registry = value.replace(/\/+$/, "");
+      addTrusted(cfg.registry);
       continue;
     }
     const scopeMatch = key.match(/^@([^:]+):registry$/);
     if (scopeMatch?.[1]) {
       cfg.scoped[scopeMatch[1]] = value.replace(/\/+$/, "");
+      addTrusted(cfg.scoped[scopeMatch[1]]!);
       continue;
     }
     const tokenHost = hostKey(key, ":_authToken");
@@ -107,11 +124,17 @@ function homeDir(): string {
 }
 
 function loadUncached(cwd: string): NpmrcConfig {
-  const cfg: NpmrcConfig = { registry: DEFAULT_REGISTRY, scoped: {}, tokens: {}, auths: {} };
+  const cfg: NpmrcConfig = {
+    registry: DEFAULT_REGISTRY,
+    scoped: {},
+    tokens: {},
+    auths: {},
+    trusted: [nerf(DEFAULT_REGISTRY)],
+  };
   // Home first so the project file wins per key.
   const home = homeDir();
-  if (home) foldEntries(cfg, readNpmrcFile(join(home, ".npmrc")));
-  foldEntries(cfg, readNpmrcFile(join(cwd, ".npmrc")));
+  if (home) foldEntries(cfg, readNpmrcFile(join(home, ".npmrc")), true);
+  foldEntries(cfg, readNpmrcFile(join(cwd, ".npmrc")), false);
   return cfg;
 }
 
@@ -143,8 +166,26 @@ export function registryFor(name: string, cfg: NpmrcConfig, override?: string | 
   return cfg.registry;
 }
 
-/** `Authorization` header for a registry URL, or {} when anonymous. */
-export function authHeaders(registryUrl: string, cfg: NpmrcConfig): Record<string, string> {
+/**
+ * May the ambient NPM_TOKEN go to this host? Only registries the user picked:
+ * the npmjs default, ~/.npmrc hosts, `--registry`, or NPM_CONFIG_REGISTRY.
+ */
+function envTokenAllowed(host: string, cfg: NpmrcConfig, override?: string | null): boolean {
+  if (cfg.trusted.includes(host)) return true;
+  if (override && nerf(override) === host) return true;
+  const env = process.env.NPM_CONFIG_REGISTRY ?? process.env.npm_config_registry;
+  return !!env && nerf(env) === host;
+}
+
+/**
+ * `Authorization` header for a registry URL, or {} when anonymous.
+ * `override` is the `--registry` flag value (trusted for NPM_TOKEN).
+ */
+export function authHeaders(
+  registryUrl: string,
+  cfg: NpmrcConfig,
+  override?: string | null,
+): Record<string, string> {
   const host = nerf(registryUrl);
   // Exact host key first, then any path-scoped key under the same host.
   const token =
@@ -160,7 +201,9 @@ export function authHeaders(registryUrl: string, cfg: NpmrcConfig): Record<strin
       .sort((a, b) => b[0].length - a[0].length)[0]?.[1];
   if (auth) return { Authorization: `Basic ${auth}` };
   const envToken = process.env.NPM_TOKEN;
-  if (envToken) return { Authorization: `Bearer ${envToken}` };
+  if (envToken && envTokenAllowed(host, cfg, override)) {
+    return { Authorization: `Bearer ${envToken}` };
+  }
   return {};
 }
 
@@ -184,7 +227,7 @@ export function arboristRegistryOpts(
     opts[`@${scope}:registry`] = url;
   }
   for (const url of registries) {
-    const headers = authHeaders(url, cfg);
+    const headers = authHeaders(url, cfg, override);
     const header = headers["Authorization"];
     if (!header) continue;
     if (header.startsWith("Bearer ")) {

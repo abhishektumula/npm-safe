@@ -115,7 +115,9 @@ describe("fetchNpmMeta", () => {
   });
   test("401 hints at auth", async () => {
     stubFetch({}, 401);
-    await expect(fetchNpmMeta("priv")).rejects.toThrow(/NPM_TOKEN/);
+    await expect(fetchNpmMeta("priv")).rejects.toThrow(
+      '"//registry.npmjs.org/:_authToken=${NPM_TOKEN}" to .npmrc',
+    );
   });
   test("--registry override changes the request URL", async () => {
     const seen = captureFetch({ name: "x", version: "1.0.0" });
