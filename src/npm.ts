@@ -144,7 +144,7 @@ export async function fetchNpmMeta(
       if (res.status === 404) throw new Error(`${what} not found (${nerf(registry)})`);
       if (res.status === 401 || res.status === 403) {
         throw new Error(
-          `registry responded ${res.status} for "${name}" — private registry? set NPM_TOKEN or check .npmrc auth for ${nerf(registry)}`,
+          `registry responded ${res.status} for "${name}" — private registry? add "${nerf(registry)}:_authToken=\${NPM_TOKEN}" to .npmrc (or pass --registry ${registry})`,
         );
       }
       if (!res.ok) {

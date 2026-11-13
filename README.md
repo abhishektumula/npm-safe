@@ -251,7 +251,7 @@ never printed.
 | `(nps estimate: snyk unreachable)` | Snyk is down or blocked; the score comes from OSV/downloads/deps.dev instead. Run `nps doctor` |
 | `(nps estimate: snyk parse failed)` | Snyk changed its page layout; the estimate stands in. Open an issue |
 | `health n/a (snyk unreachable)` | Snyk *and* the free sources had too little data. Install proceeds unless a policy is set; `--min-score` treats unknown as a failure |
-| `registry responded 401/403` | Private registry: set `NPM_TOKEN`, `--registry`, or `.npmrc` auth |
+| `registry responded 401/403` | Private registry: add `//host/:_authToken=${NPM_TOKEN}` to `.npmrc`, or pass `--registry` |
 | Prompt never appears in CI | Not a TTY: pass `-y`, or use `nps check` as a gate |
 | `package manager "brew" is disabled` | `nps.config.json` disables it |
 | Odd results after a layout change | `nps cache-clear` |
