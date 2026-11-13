@@ -21,7 +21,15 @@ jobs:
       - run: bun run lint
       - run: bun run format:check
       - run: bun test --coverage
-      - run: bun audit
+      # Ignored (reviewed 2026-11-13, both moderate, transitive via
+      # @npmcli/arborist; no in-range fix — arborist 10 still pins
+      # minimatch ^10 and requires Node >=22.22, dropping our Node 20):
+      #   GHSA-g3hv-75wg-m249 minimatch ReDoS — needs an attacker-chosen glob;
+      #     ours come from the user's own `workspaces` / TUF metadata.
+      #   GHSA-3g3m-2fjr-6pw4 glob AbortSignal bypass — only matters when a
+      #     caller cancels glob via signal; cacache never does.
+      # Drop these when moving to arborist 10 / cacache 21.
+      - run: bun audit --ignore=GHSA-g3hv-75wg-m249 --ignore=GHSA-3g3m-2fjr-6pw4
       - run: bun run build
       - uses: actions/upload-artifact@v7
         with:
