@@ -5,6 +5,12 @@ versions follow semver (minor bumps may change CLI output while < 1.0).
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-14
+
+Security release: your `NPM_TOKEN` can no longer be sent to a registry that
+only a cloned project's `.npmrc` names. Public packages and setups without
+`NPM_TOKEN` are unaffected.
+
 ### Security
 - `NPM_TOKEN` is no longer sent to every registry without an `.npmrc`
   token. It now goes only to registries the user chose (npmjs default,
@@ -12,6 +18,11 @@ versions follow semver (minor bumps may change CLI output while < 1.0).
   cloned repo's `.npmrc` could point a scope at its own server and receive
   your token on `nps install`. Project registries that need it must say
   `//host/:_authToken=${NPM_TOKEN}` (same as npm).
+
+### Changed
+- A 401/403 from a registry now names the exact fix,
+  `add "//host/:_authToken=${NPM_TOKEN}" to .npmrc (or pass --registry <url>)`,
+  instead of "set NPM_TOKEN".
 
 ## [2.2.0] - 2026-10-24
 
