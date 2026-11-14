@@ -48,7 +48,8 @@ what rules are load-bearing, and exactly when to commit.
 | `src/signals.ts`   | Local red flags: deprecated, install scripts, typosquat lookalikes, fresh release (`FRESH_HOURS`), no repo; `closest()` for did-you-mean | Signal rules, popular-name list |
 | `src/policy.ts`    | `--min-score` + `nps.config.json` `policy` → `evaluate()` violations (exit 3) | Block rules |
 | `src/commands.ts`  | nps-native commands: `scan`, `doctor`, `cache-clear`, `completions`, `alias` | New non-install commands |
-| `src/completions.ts` | Static bash/zsh/fish scripts + alias snippet      | Command/flag list changes (keep in sync with help) |
+| `src/help.ts`      | `COMMANDS` / `FLAGS` table (summaries, usage) + `commandHelp()` for `nps help <cmd>` / `<cmd> --help` | New command or flag (completions read it too) |
+| `src/completions.ts` | Static bash/zsh/fish scripts generated from `help.ts` + alias snippet | Completion behavior per shell |
 | `src/report.ts`    | Versioned `--json` document (`SCHEMA_VERSION`)      | Output contract (bump version on breaking change)  |
 | `src/exit.ts`      | `EXIT` codes (0 ok, 1 error, 3 blocked, 4 unavailable) | Exit-code contract                              |
 | `src/log.ts`       | `--verbose` logger (stderr only)                    | Diagnostics                                        |

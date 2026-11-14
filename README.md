@@ -60,8 +60,19 @@ Or install it globally and alias it:
 npm install -g @hort/nps   # exposes the `nps` command
 nps --version
 nps alias                  # prints handy aliases (ni, nic, nscan)
-eval "$(nps completions zsh)"   # also: bash, fish
+nps completions install    # <TAB> completion for your shell (bash, zsh, fish)
 ```
+
+After `nps completions install` (open a new terminal), `nps <TAB>` lists
+nps's commands, with descriptions in zsh and fish, instead of file names;
+flags and values like `--pm <TAB>` complete too. It adds one line to
+`~/.bashrc` / `~/.zshrc` (or writes fish's `completions/nps.fish`) and is
+safe to re-run. Prefer to manage it yourself? `eval "$(nps completions zsh)"`.
+Completion works for the global `nps` command; when nps is only a project
+devDependency, use package scripts (`"scan": "nps scan"`) instead.
+
+Help: `nps --help` for everything, `nps help <command>` (or
+`nps <command> --help`) for one command.
 
 From source: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -127,7 +138,8 @@ the npm/yarn engines, use `-w`.
 | `nps scan [--prod]` | intel for every dependency in `package.json` (version on disk when installed), worst first |
 | `nps doctor` | manager detection, config, cache, registry / Snyk / OSV / deps.dev reachability |
 | `nps cache-clear` | delete nps's intel cache (named so it can't shadow `npm cache clean`) |
-| `nps completions <bash\|zsh\|fish>` | print a completion script |
+| `nps completions install` | set up `<TAB>` completion for your shell (also `nps completions <bash\|zsh\|fish>` to print the script) |
+| `nps help [command]` | help for nps, or for one command (= `nps <command> --help`) |
 | `nps alias` | print shell aliases |
 | `nps run\|test\|exec\|remove\|…` | passthrough to your package manager |
 

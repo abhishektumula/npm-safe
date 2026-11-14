@@ -65,7 +65,7 @@ bun run check && bun test --coverage   # green + ≥90% or add tests
    `render()`, …). Engines map known flags and report the rest ignored;
    binary installers forward `extraArgs` verbatim.
 3. **Document it** — `helpText()` table, `README.md` flags table,
-   `src/completions.ts` `FLAGS`, and a `CHANGELOG.md` line.
+   `src/help.ts` `FLAGS` (feeds `<TAB>` completion), and a `CHANGELOG.md` line.
    A flag that must also reach the package manager on passthrough should be
    pushed onto `kept` in `parseArgs()` (see `--verbose`).
 
@@ -73,7 +73,8 @@ bun run check && bun test --coverage   # green + ≥90% or add tests
 
 1. Add the word to `TOOL_CMDS` and a `case` in `runTool()` (`src/commands.ts`);
    return an `EXIT` code. Tool commands run before manager detection.
-2. List it in `helpText()` and `COMMANDS` in `src/completions.ts`, then the
+2. List it in `helpText()` and `COMMANDS` in `src/help.ts` (summary + usage:
+   powers `nps help <cmd>` and `<TAB>` completion), then the
    README commands table. Test it in `test/commands.test.ts`.
 4. **Test it** — `test/cli.test.ts` (parsing) + the suite of whatever
    module honors it.

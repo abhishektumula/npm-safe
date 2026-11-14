@@ -5,6 +5,14 @@ versions follow semver (minor bumps may change CLI output while < 1.0).
 
 ## [Unreleased]
 
+### Added
+- `nps completions install`: sets up `<TAB>` completion for your shell
+  (bash, zsh, fish; detected from `$SHELL`, safe to re-run). `nps <TAB>`
+  now lists nps's commands (with descriptions in zsh/fish) instead of file
+  names, and completes flags, `--pm` values, `completions` and `help` args.
+- `nps help [command]` and `nps <command> --help` show help for one command.
+  Previously `nps help` looked up a package called "help".
+
 ### Changed
 - `nps scan` no longer lists nps itself (`@hort/nps` or its GitHub Packages
   mirror) when it's installed as a project dependency.

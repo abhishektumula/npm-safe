@@ -173,6 +173,18 @@ describe("parseArgs flags", () => {
     expect(parseArgs(["-v"]).version).toBe(true);
     expect(parseArgs(["--version"]).version).toBe(true);
   });
+  test("help topics: `help <cmd>`, `<cmd> --help`, bare and package --help", () => {
+    const h = parseArgs(["help", "scan"]);
+    expect(h.help).toBe(true);
+    expect(h.helpTopic).toBe("scan");
+    expect(h.subcommand).toBe("help");
+    expect(h.opts.packages).toEqual([]);
+    expect(parseArgs(["help"]).helpTopic).toBeNull();
+    expect(parseArgs(["scan", "--help"]).helpTopic).toBe("scan");
+    expect(parseArgs(["--help"]).helpTopic).toBeNull();
+    expect(parseArgs(["express", "-h"]).helpTopic).toBe("express");
+    expect(parseArgs(["scan"]).helpTopic).toBeNull();
+  });
   test("unknown flags ride in extraArgs (forwarded, not fatal)", () => {
     const p = parseArgs(["install", "a", "--save-exact", "-E"]);
     expect(p.help).toBe(false);
