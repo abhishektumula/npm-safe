@@ -69,8 +69,12 @@ automatically as a `dependency`.
   registry, Snyk and OSV; fails when the Snyk parser stops matching.
 - `.github/workflows/release.yml` — pushing a `vX.Y.Z` tag verifies the tag
   matches `package.json`, runs the gates, publishes with npm provenance
-  (needs the `NPM_TOKEN` repo secret) and creates the GitHub release from
-  `CHANGELOG.md`.
+  (needs the `NPM_TOKEN` repo secret), mirrors the same build to GitHub
+  Packages as `@abhishektumula/nps` (GitHub requires the owner's scope;
+  this fills the repo page's "Packages" sidebar) and creates the GitHub
+  release from `CHANGELOG.md`. Each step skips what already exists, so a
+  hand publish before the tag is fine; re-run an existing tag with
+  `gh workflow run release.yml -f tag=vX.Y.Z`.
 - `.github/dependabot.yml` — weekly npm + Actions updates.
 
 A green CI means the set is safe to commit and release.

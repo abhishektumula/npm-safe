@@ -1,20 +1,40 @@
-# Tag-driven release: push vX.Y.Z and this verifies, builds, publishes with
-# npm provenance, and cuts a GitHub release. Needs the NPM_TOKEN secret.
+# Tag-driven release: push vX.Y.Z and this verifies, builds, publishes to
+# npmjs with provenance (needs the NPM_TOKEN secret), mirrors the same
+# tarball to GitHub Packages as @abhishektumula/nps (so the repo page's
+# "Packages" sidebar lists it; uses GITHUB_TOKEN), and cuts a GitHub release
+# from CHANGELOG.md.
+#
+# Every publish step is idempotent: a version already on npmjs / GitHub
+# Packages, or an existing GitHub release, is skipped instead of failing. So
+# publishing by hand first and pushing the tag later is fine, and a release
+# can be re-run for an existing tag via "Run workflow" (workflow_dispatch).
 name: release
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)release, e.g. v2.3.0"
+        required: true
 
 permissions:
   contents: write
   id-token: write # npm provenance
+  packages: write # GitHub Packages mirror
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+  GH_PKG: "@abhishektumula/nps"
 
 jobs:
   publish:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.3
@@ -25,19 +45,49 @@ jobs:
       - name: tag matches package.json
         run: |
           v="$(node -p 'require("./package.json").version')"
-          [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME != package.json v$v"; exit 1; }
+          [ "v$v" = "$TAG" ] || { echo "tag $TAG != package.json v$v"; exit 1; }
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+          echo "NAME=$(node -p 'require("./package.json").name')" >> "$GITHUB_ENV"
       - run: bun install --frozen-lockfile
       - run: bun run check
       - run: bun test --coverage
       - run: bun run build
       - run: chmod +x dist/index.js
-      - run: npm publish --provenance --access public
+
+      - name: publish to npmjs (skip if already published)
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      - name: GitHub release from CHANGELOG
+        run: |
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "$NAME@$VERSION is already on npmjs — skipping"
+          else
+            npm publish --provenance --access public
+          fi
+
+      - name: mirror to GitHub Packages (skip if already published)
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: |
+          rc="$RUNNER_TEMP/gh-packages.npmrc"
+          printf '%s\n' \
+            "@abhishektumula:registry=https://npm.pkg.github.com" \
+            "//npm.pkg.github.com/:_authToken=\${NODE_AUTH_TOKEN}" > "$rc"
+          if npm view "$GH_PKG@$VERSION" version --userconfig "$rc" >/dev/null 2>&1; then
+            echo "$GH_PKG@$VERSION is already on GitHub Packages — skipping"
+            exit 0
+          fi
+          # GitHub Packages requires the scope to match the repo owner; rename
+          # in the runner's working copy only (never committed).
+          npm pkg set name="$GH_PKG"
+          npm publish --userconfig "$rc" --registry https://npm.pkg.github.com --ignore-scripts
+
+      - name: GitHub release from CHANGELOG (skip if it exists)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          v="${GITHUB_REF_NAME#v}"
-          awk -v v="$v" '$0 ~ "^## \\[" v "\\]" {f=1; next} /^## \[/ {f=0} f' CHANGELOG.md > notes.md
-          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists — skipping"
+            exit 0
+          fi
+          awk -v v="$VERSION" '$0 ~ "^## \\[" v "\\]" {f=1; next} /^## \[/ {f=0} f' CHANGELOG.md > notes.md
+          gh release create "$TAG" --title "$TAG" --notes-file notes.md --verify-tag
