@@ -5,6 +5,10 @@ versions follow semver (minor bumps may change CLI output while < 1.0).
 
 ## [Unreleased]
 
+### Changed
+- `nps scan` no longer lists nps itself (`@hort/nps` or its GitHub Packages
+  mirror) when it's installed as a project dependency.
+
 ## [2.3.0] - 2026-11-14
 
 Security release: your `NPM_TOKEN` can no longer be sent to a registry that
