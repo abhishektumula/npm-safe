@@ -20,7 +20,7 @@ import { startSpinner } from "./spinner.ts";
 import { healthColor } from "./colors.ts";
 import { DEPSDEV_API } from "./depsdev.ts";
 import { OSV_URL } from "./osv.ts";
-import { VERSION } from "./version.ts";
+import { SELF_NAMES, VERSION } from "./version.ts";
 import type { CliOptions, PackageReport } from "./types.ts";
 
 export const TOOL_CMDS = new Set(["scan", "doctor", "cache-clear", "completions", "alias"]);
@@ -113,6 +113,8 @@ export function readProjectDeps(
       if (!table || typeof table !== "object") continue;
       for (const [dep, range] of Object.entries(table as Record<string, unknown>)) {
         if (localNames.has(dep)) continue;
+        // nps itself (e.g. a devDependency for `nps scan` scripts) isn't screened.
+        if (SELF_NAMES.includes(dep)) continue;
         // Only plain registry ranges have intel; aliases/git/file/workspace do not.
         if (
           typeof range === "string" &&

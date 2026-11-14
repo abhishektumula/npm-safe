@@ -132,7 +132,9 @@ the npm/yarn engines, use `-w`.
 | `nps run\|test\|exec\|remove\|…` | passthrough to your package manager |
 
 `scan` skips workspaces' member packages and non-registry dependencies
-(`file:`, `git`, `workspace:`), and lists what it skipped.
+(`file:`, `git`, `workspace:`), and lists what it skipped. It also leaves
+out nps itself (`@hort/nps`), so adding it as a devDependency for
+`"scan": "nps scan"` scripts doesn't rank the scanner.
 
 ## Policy (CI gate)
 

@@ -120,6 +120,12 @@ describe("readProjectDeps", () => {
     expect(all.skipped.sort()).toEqual(["fromgit", "gh", "local", "ws"]);
     expect(readProjectDeps(dir, true).names).toEqual(["alpha"]);
   });
+  test("leaves nps itself out (npm name and GitHub Packages mirror)", () => {
+    project({ alpha: "^1" }, { "@hort/nps": "^2.3.0", "@abhishektumula/nps": "^2.3.0" });
+    const deps = readProjectDeps(dir, false);
+    expect(deps.names).toEqual(["alpha"]);
+    expect(deps.skipped).toEqual([]);
+  });
 });
 
 describe("workspaces", () => {
