@@ -152,6 +152,32 @@ describe("run", () => {
     await run(["run", "--help"]);
     expect(output()).toContain("usage");
   });
+  test("nps help <cmd> and <cmd> --help show that command; help is never a package", async () => {
+    await run(["help", "scan"]);
+    expect(output()).toContain("nps scan");
+    expect(output()).toContain("--prod");
+    expect(output()).not.toContain("fetching intel");
+    logs = [];
+    await run(["completions", "--help"]);
+    expect(output()).toContain("nps completions install");
+    logs = [];
+    await run(["i", "--help"]);
+    expect(output()).toContain("nps install");
+    expect(output()).toContain("also: i, add");
+  });
+  test("nps help / bare --help / --help beside a package show the overview", async () => {
+    for (const argv of [["help"], ["--help"], ["express", "--help"]]) {
+      logs = [];
+      await run(argv);
+      expect(output()).toContain("exit codes");
+    }
+  });
+  test("nps help <unknown> exits 1 with a did-you-mean", async () => {
+    await run(["help", "scna"]);
+    expect(output()).toContain('no nps command "scna"');
+    expect(output()).toContain("nps help scan");
+    expect(process.exitCode).toBe(1);
+  });
   test("passthrough with a bad manager exits 1", async () => {
     await run(["run", "--pm", "wat", "build"]);
     expect(output()).toContain("unsupported package manager");
@@ -522,7 +548,7 @@ describe("run: policy, json, flags", () => {
     await run(["alias"]);
     expect(output()).toContain("alias ni=");
     await run(["alias", "--help"]);
-    expect(output()).toContain("exit codes");
+    expect(output()).toContain("nps alias");
   });
   test("passthrough still forwards --verbose to the manager", () => {
     const p = parseArgs(["run", "dev", "--verbose", "--min-score", "5"]);

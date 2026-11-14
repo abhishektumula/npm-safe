@@ -1,8 +1,18 @@
 // nps-native commands that are not installs: scan, doctor, cache-clear,
 // completions, alias. cli.ts routes here; keep each command small and
-// side-effect-light (only cache-clear deletes anything, and only nps's own cache).
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+// side-effect-light (only cache-clear deletes anything, and only nps's own
+// cache; `completions install` only appends one line to the user's shell rc
+// or writes nps's own fish completion file, and only when asked).
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+import { homedir } from "node:os";
+import { basename, join } from "node:path";
 import { c, paint } from "./colors.ts";
 import { aliasSnippet, completionScript, SHELLS, type Shell } from "./completions.ts";
 import { cacheStats, purgeIntelCache } from "./cache.ts";
@@ -38,8 +48,11 @@ export async function runTool(
       return doctor(opts, cwd);
     case "cache-clear":
       return cacheClear();
-    case "completions":
-      return completions(args[0]);
+    case "completions": {
+      // Global flags (--no-color, --verbose…) ride along in args; skip them.
+      const [first, second] = args.filter((a) => !a.startsWith("-"));
+      return first === "install" ? installCompletions(second) : completions(first);
+    }
     case "alias":
       console.log(aliasSnippet());
       return EXIT.OK;
@@ -375,11 +388,79 @@ function cacheClear(): number {
 
 // --------------------------------------------------------- completions
 
+const isShell = (s: string | undefined): s is Shell =>
+  !!s && (SHELLS as readonly string[]).includes(s);
+
 function completions(shell: string | undefined): number {
-  if (!shell || !(SHELLS as readonly string[]).includes(shell)) {
-    console.error(paint(c.red, `  ✖ usage: nps completions <${SHELLS.join("|")}>`));
+  if (!isShell(shell)) {
+    console.error(
+      paint(c.red, `  ✖ usage: nps completions install | nps completions <${SHELLS.join("|")}>`),
+    );
     return EXIT.ERROR;
   }
-  console.log(completionScript(shell as Shell).trimEnd());
+  console.log(completionScript(shell).trimEnd());
   return EXIT.OK;
+}
+
+const RC_MARKER = "# nps completions";
+
+function home(): string {
+  return process.env.HOME || homedir();
+}
+
+/** Where `nps completions install` puts things for each shell. */
+export function completionTarget(shell: Shell): string {
+  if (shell === "fish") {
+    const cfg = process.env.XDG_CONFIG_HOME || join(home(), ".config");
+    return join(cfg, "fish", "completions", "nps.fish");
+  }
+  if (shell === "zsh") return join(process.env.ZDOTDIR || home(), ".zshrc");
+  return join(home(), ".bashrc");
+}
+
+/**
+ * Set up <TAB> completion for the user's shell (arg, else $SHELL). bash/zsh:
+ * append one guarded `eval` line to the rc file (once — re-runs are a no-op),
+ * so the script stays current across nps upgrades. fish: (re)write nps's own
+ * completions file.
+ */
+function installCompletions(arg: string | undefined): number {
+  const shell = arg ?? basename(process.env.SHELL ?? "");
+  if (!isShell(shell)) {
+    console.error(
+      paint(
+        c.red,
+        `  ✖ ${arg ? `unsupported shell "${sanitizeTerminal(arg)}"` : "couldn't detect your shell"}: use nps completions install <${SHELLS.join("|")}>`,
+      ),
+    );
+    return EXIT.ERROR;
+  }
+  const target = completionTarget(shell);
+  try {
+    if (shell === "fish") {
+      mkdirSync(join(target, ".."), { recursive: true });
+      writeFileSync(target, completionScript("fish"));
+      console.log(paint(c.green, `  ✔ wrote ${target}`));
+      console.log(paint(c.dim, "  open a new fish shell, then try: nps <TAB>"));
+      return EXIT.OK;
+    }
+    const current = existsSync(target) ? readFileSync(target, "utf8") : "";
+    if (current.includes(RC_MARKER)) {
+      console.log(paint(c.green, `  ✔ already set up in ${target}`));
+      return EXIT.OK;
+    }
+    const sep = current === "" || current.endsWith("\n") ? "" : "\n";
+    appendFileSync(
+      target,
+      `${sep}${RC_MARKER}\ncommand -v nps >/dev/null 2>&1 && eval "$(nps completions ${shell})"\n`,
+    );
+    console.log(paint(c.green, `  ✔ added nps completion to ${target}`));
+    console.log(paint(c.dim, `  open a new terminal (or: source ${target}), then try: nps <TAB>`));
+    return EXIT.OK;
+  } catch (err) {
+    console.error(
+      paint(c.red, `  ✖ couldn't write ${target}: ${err instanceof Error ? err.message : err}`),
+    );
+    return EXIT.ERROR;
+  }
 }

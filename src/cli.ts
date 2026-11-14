@@ -4,6 +4,7 @@ import { EXIT } from "./exit.ts";
 import { setVerbose, vlog } from "./log.ts";
 import { runTool, TOOL_CMDS } from "./commands.ts";
 import { closest } from "./signals.ts";
+import { commandHelp, findCommand } from "./help.ts";
 import { effectivePolicy, evaluate, parseMinScore, snykEnabled } from "./policy.ts";
 import { buildJsonReport } from "./report.ts";
 import { inspectPackages } from "./inspect.ts";
@@ -101,6 +102,8 @@ export interface Parsed {
   passthroughArgs: string[];
   opts: CliOptions;
   help: boolean;
+  /** command to show help for (`nps help scan`, `nps scan --help`), else null = overview */
+  helpTopic: string | null;
   version: boolean;
   /** raw --min-score value that failed to parse (0–100 integer), else null */
   minScoreInvalid: string | null;
@@ -185,6 +188,25 @@ export function parseArgs(argv: string[]): Parsed {
   }
 
   const first = positionals[0];
+  // `nps help [cmd]` is help, never a package called "help".
+  if (first === "help") {
+    help = true;
+    positionals.shift();
+  }
+  const topicWord = first === "help" ? positionals[0] : first;
+  const helpTopic = help && topicWord !== undefined ? topicWord : null;
+  if (first === "help") {
+    return {
+      cmd: "install",
+      subcommand: "help",
+      passthroughArgs: [],
+      opts,
+      help,
+      helpTopic,
+      version,
+      minScoreInvalid,
+    };
+  }
   if (first !== undefined && TOOL_CMDS.has(first)) {
     return {
       cmd: "tool",
@@ -192,6 +214,7 @@ export function parseArgs(argv: string[]): Parsed {
       passthroughArgs: kept.slice(1),
       opts,
       help,
+      helpTopic,
       version,
       minScoreInvalid,
     };
@@ -203,6 +226,7 @@ export function parseArgs(argv: string[]): Parsed {
       passthroughArgs: kept.slice(1),
       opts,
       help,
+      helpTopic,
       version,
       minScoreInvalid,
     };
@@ -222,6 +246,7 @@ export function parseArgs(argv: string[]): Parsed {
     passthroughArgs: [],
     opts,
     help,
+    helpTopic,
     version,
     minScoreInvalid,
   };
@@ -243,6 +268,13 @@ export function registrySuffix(o: { registry: string | null }): string {
   return ` (registry: ${o.registry.replace(/\/\/[^/]*@/, "//***@")})`;
 }
 
+/** Command names (and aliases) `nps help <x>` can suggest. */
+function commandHelpWords(): string[] {
+  return [...INSTALL_VERBS, "check", ...TOOL_CMDS, ...PASSTHROUGH_CMDS, "help"].filter(
+    (w) => findCommand(w) !== undefined,
+  );
+}
+
 export function helpText(): string {
   return `
   ${paint(c.pink, "◆ nps")} ${paint(c.dim, `v${VERSION} — npm wrapper with safety intel before you install`)}
@@ -256,8 +288,10 @@ export function helpText(): string {
     nps scan [--prod]                 screen this project's declared dependencies
     nps doctor                        check manager detection, registry, snyk, osv, cache
     nps cache-clear                   delete nps's intel cache
+    nps completions install           set up <TAB> completion for your shell
     nps completions <bash|zsh|fish>   print a shell completion script
     nps alias                         print handy shell aliases
+    nps help <command>                help for one command (= nps <command> --help)
     nps add "express@5" --dry-run     inspect only, install nothing
     nps express lodash -y             bare packages also mean install
     nps add user/repo file:../lib     non-registry specs skip intel + warn
@@ -354,18 +388,38 @@ function commandWords(): string[] {
 }
 
 export async function run(argv: string[]): Promise<void> {
-  const { cmd, subcommand, passthroughArgs, opts, help, version, minScoreInvalid } =
+  const { cmd, subcommand, passthroughArgs, opts, help, helpTopic, version, minScoreInvalid } =
     parseArgs(argv);
   if (version) {
     console.log(VERSION);
+    return;
+  }
+  // NO_COLOR is honored inside paint(); piped stdout is handled by index.ts.
+  if (opts.noColor) setColorEnabled(false);
+  if (help) {
+    // `nps scan --help` / `nps help scan` → that command; bare --help, or
+    // --help next to package names (`nps express --help`) → the overview.
+    const text = helpTopic ? commandHelp(helpTopic) : null;
+    if (text) {
+      console.log(text);
+    } else if (subcommand === "help" && helpTopic) {
+      const hint = closest(helpTopic, commandHelpWords());
+      console.error(
+        paint(
+          c.red,
+          `  ✖ no nps command "${sanitizeTerminal(helpTopic)}"${hint ? ` — did you mean \`nps help ${hint}\`?` : ""}`,
+        ),
+      );
+      process.exitCode = EXIT.ERROR;
+    } else {
+      console.log(helpText());
+    }
     return;
   }
 
   // Process-wide switches first so every later line honors them.
   setVerbose(opts.verbose);
   if (opts.noCache) process.env.NPS_NO_CACHE = "1";
-  // NO_COLOR is honored inside paint(); piped stdout is handled by index.ts.
-  if (opts.noColor) setColorEnabled(false);
 
   if (minScoreInvalid !== null) {
     console.error(
@@ -379,10 +433,6 @@ export async function run(argv: string[]): Promise<void> {
   }
 
   if (cmd === "tool") {
-    if (help) {
-      console.log(helpText());
-      return;
-    }
     process.exitCode = await runTool(subcommand, passthroughArgs, opts);
     return;
   }
@@ -399,10 +449,6 @@ export async function run(argv: string[]): Promise<void> {
   vlog(`package manager: ${pm} (detected: ${via}), engine: ${engineFor(pm)}`);
 
   if (cmd === "passthrough") {
-    if (help) {
-      console.log(helpText());
-      return;
-    }
     console.log(paint(c.dim, `  ◈ ${pm} ${subcommand} (via ${via})`));
     try {
       process.exitCode = await performPassthrough(
@@ -477,10 +523,6 @@ export async function run(argv: string[]): Promise<void> {
 
   // Bare nps install (no packages) -> project install (like npm install)
   if (opts.packages.length === 0) {
-    if (help) {
-      console.log(helpText());
-      return;
-    }
     console.log(
       paint(
         c.dim,
@@ -521,11 +563,6 @@ export async function run(argv: string[]): Promise<void> {
       spinner.fail(err instanceof InstallError ? err.message : String(err));
       process.exitCode = EXIT.ERROR;
     }
-    return;
-  }
-
-  if (help) {
-    console.log(helpText());
     return;
   }
 

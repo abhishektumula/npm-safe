@@ -1,8 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readProjectDeps, runChecks, runTool } from "../src/commands.ts";
+import {
+  completionTarget,
+  readProjectDeps,
+  runChecks,
+  runTool,
+  TOOL_CMDS,
+} from "../src/commands.ts";
+import { commandHelp, findCommand } from "../src/help.ts";
 import { completionScript, aliasSnippet, SHELLS } from "../src/completions.ts";
 import { clearIntelCache } from "../src/cache.ts";
 import { clearNpmInflight } from "../src/npm.ts";
@@ -306,10 +313,116 @@ describe("cache-clear, completions, alias", () => {
     expect(completionScript("zsh")).toContain("compdef _nps nps");
     expect(completionScript("fish")).toContain("complete -c nps");
   });
+  test("scripts offer commands with descriptions, never files", () => {
+    const zsh = completionScript("zsh");
+    expect(zsh).toContain("'scan:screen this project'\\''s dependencies'");
+    expect(zsh).toContain("_describe -t commands");
+    expect(zsh).toContain("compinit");
+    const fish = completionScript("fish");
+    expect(fish).toContain("complete -c nps -f");
+    expect(fish).toContain("-a scan -d 'screen this project\\'s dependencies'");
+    expect(fish).toContain("-l pm -x -a 'npm bun pnpm yarn brew'");
+    const bash = completionScript("bash");
+    expect(bash).toContain("install check scan doctor");
+    expect(bash).toContain('--pm) COMPREPLY=( $(compgen -W "npm bun pnpm yarn brew"');
+    expect(bash).not.toContain("-o default");
+  });
+  test("bash script completes commands, flags and values", () => {
+    const sh = Bun.which("bash");
+    if (!sh) return;
+    const script = join(dir, "c.bash");
+    writeFileSync(script, completionScript("bash"));
+    const probe = (words: string[]) => {
+      const arr = words.map((w) => `"${w}"`).join(" ");
+      const r = Bun.spawnSync([
+        sh,
+        "-c",
+        `source "${script}"; COMP_WORDS=(${arr}); COMP_CWORD=$((\${#COMP_WORDS[@]}-1)); _nps; echo "\${COMPREPLY[*]}"`,
+      ]);
+      return r.stdout.toString().trim();
+    };
+    expect(probe(["nps", "sc"])).toBe("scan");
+    expect(probe(["nps", "install", "--pm", ""])).toBe("npm bun pnpm yarn brew");
+    expect(probe(["nps", "completions", ""])).toBe("install bash zsh fish");
+    expect(probe(["nps", "help", "do"])).toBe("doctor");
+    expect(probe(["nps", "install", "ex"])).toBe("");
+  });
   test("alias prints a snippet; unknown tool errors", async () => {
     expect(await runTool("alias", [], opts(), dir)).toBe(0);
     expect(out()).toContain("alias ni=");
     expect(aliasSnippet()).toContain("nps check");
     expect(await runTool("nope", [], opts(), dir)).toBe(1);
+  });
+});
+
+describe("completions install", () => {
+  const saved = {
+    HOME: process.env.HOME,
+    SHELL: process.env.SHELL,
+    ZDOTDIR: process.env.ZDOTDIR,
+    XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
+  };
+  beforeEach(() => {
+    process.env.HOME = dir;
+    delete process.env.ZDOTDIR;
+    delete process.env.XDG_CONFIG_HOME;
+  });
+  afterEach(() => {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+  const read = (p: string) => readFileSync(p, "utf8");
+
+  test("bash: appends one guarded eval line, once", async () => {
+    writeFileSync(join(dir, ".bashrc"), "export X=1"); // no trailing newline
+    expect(await runTool("completions", ["install", "bash"], opts(), dir)).toBe(0);
+    expect(await runTool("completions", ["--no-color", "install", "bash"], opts(), dir)).toBe(0);
+    const rc = read(join(dir, ".bashrc"));
+    expect(rc).toBe(
+      'export X=1\n# nps completions\ncommand -v nps >/dev/null 2>&1 && eval "$(nps completions bash)"\n',
+    );
+    expect(out()).toContain("already set up");
+  });
+  test("zsh: detected from $SHELL, honors ZDOTDIR, creates the rc", async () => {
+    process.env.SHELL = "/usr/bin/zsh";
+    process.env.ZDOTDIR = join(dir, "zdot");
+    mkdirSync(process.env.ZDOTDIR);
+    expect(await runTool("completions", ["install"], opts(), dir)).toBe(0);
+    expect(read(join(dir, "zdot", ".zshrc"))).toContain('eval "$(nps completions zsh)"');
+  });
+  test("fish: writes nps's own completions file under XDG_CONFIG_HOME", async () => {
+    process.env.XDG_CONFIG_HOME = join(dir, "xdg");
+    expect(await runTool("completions", ["install", "fish"], opts(), dir)).toBe(0);
+    const f = join(dir, "xdg", "fish", "completions", "nps.fish");
+    expect(completionTarget("fish")).toBe(f);
+    expect(read(f)).toBe(completionScript("fish"));
+  });
+  test("unknown or undetectable shell errors without writing", async () => {
+    process.env.SHELL = "/bin/tcsh";
+    expect(await runTool("completions", ["install"], opts(), dir)).toBe(1);
+    expect(out()).toContain("couldn't detect your shell");
+    expect(await runTool("completions", ["install", "pwsh"], opts(), dir)).toBe(1);
+    expect(out()).toContain('unsupported shell "pwsh"');
+    expect(existsSync(join(dir, ".bashrc"))).toBe(false);
+  });
+  test("unwritable target reports an error", async () => {
+    mkdirSync(join(dir, ".bashrc")); // a directory: append fails
+    expect(await runTool("completions", ["install", "bash"], opts(), dir)).toBe(1);
+    expect(out()).toContain("couldn't write");
+  });
+});
+
+describe("help table", () => {
+  test("commandHelp: known, alias, unknown", () => {
+    expect(stripAnsi(commandHelp("scan")!)).toContain("nps scan [--prod]");
+    expect(stripAnsi(commandHelp("add")!)).toContain("◆ nps install");
+    expect(commandHelp("nope")).toBeNull();
+  });
+  test("every first-level command nps routes has a help entry", () => {
+    for (const name of ["install", "i", "add", "check", ...TOOL_CMDS, "help"]) {
+      expect(findCommand(name)).toBeDefined();
+    }
   });
 });
